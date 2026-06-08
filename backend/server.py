@@ -371,6 +371,19 @@ async def check_providers():
     }
 
 
+@app.get("/api/health")
+async def health():
+    oa = ollama_available()
+    oc = find_opencode_server()
+    provider = "ollama" if oa else "gemini" if gemini_api_key else "openai" if openai_api_key else "none"
+    return {
+        "backend": True,
+        "ollama": oa,
+        "opencode": oc is not None,
+        "provider": provider,
+    }
+
+
 @app.post("/api/search")
 async def search(query: str):
     return {"results": web_search(query)}

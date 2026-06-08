@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut } = require('electron');
 const path = require('path');
 const { execFile } = require('child_process');
 const fs = require('fs');
@@ -29,6 +29,10 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
 
+  globalShortcut.register('CommandOrControl+Shift+A', () => {
+    mainWindow.webContents.send('global-toggle');
+  });
+
   mainWindow.on('move', () => {
     if (isSnapping) return;
     isSnapping = true;
@@ -48,6 +52,10 @@ function createWindow() {
 }
 
 app.whenReady().then(createWindow);
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -81,6 +89,15 @@ ipcMain.handle('expandWindow', (_event, y) => {
 // ---- App IPC ----
 
 const BACKEND = 'http://localhost:8787';
+
+ipcMain.handle('getHealth', async () => {
+  try {
+    const r = await fetch(`${BACKEND}/api/health`);
+    return await r.json();
+  } catch {
+    return { backend: false, ollama: false, opencode: false, provider: 'none' };
+  }
+});
 
 async function takeScreenshot() {
   const p = `/tmp/sompter_screenshot_${Date.now()}.png`;
