@@ -59,6 +59,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   runServiceAction: (action) => ipcRenderer.invoke('runServiceAction', { action }),
   openLogsFolder: () => ipcRenderer.invoke('openLogsFolder'),
 
+  // Menu Bar / Dock / Notifications
+  getMenuBarPrefs: () => ipcRenderer.invoke('getMenuBarPrefs'),
+  saveMenuBarPrefs: (prefs) => ipcRenderer.invoke('saveMenuBarPrefs', prefs),
+  showNotification: (title, body) => ipcRenderer.invoke('showNotification', { title, body }),
+
+  onMenuAction: (callback) => {
+    ipcRenderer.on('menu-action', (_event, action) => callback(action));
+  },
+
   // Global toggle
   onGlobalToggle: (callback) => {
     ipcRenderer.on('global-toggle', () => callback());

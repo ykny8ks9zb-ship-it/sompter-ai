@@ -880,6 +880,26 @@ textarea.action-param {
   text-align: center;
 }
 
+#setup-menu-bar-options {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.setup-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #ccc;
+  cursor: pointer;
+}
+
+.setup-toggle input[type="checkbox"] {
+  accent-color: #8b5cf6;
+}
+
 #setup-result {
   background: #16162a;
   border-radius: 6px;
