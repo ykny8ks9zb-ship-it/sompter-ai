@@ -5,6 +5,9 @@
   "main": "app/main.js",
   "scripts": {
     "dev": "concurrently -n backend,electron,opencode -c cyan,magenta,yellow \".venv/bin/uvicorn backend.server:app --reload --port 8787\" \"npx electron app/main.js\" \"opencode serve --port 4096\"",
+    "start:app": "bash scripts/start-sompter.sh",
+    "stop": "echo 'Stopping Sompter processes...' && pkill -f 'uvicorn backend.server:app' 2>/dev/null; pkill -f 'electron app/main.js' 2>/dev/null; pkill -f 'opencode serve' 2>/dev/null; echo 'Done.'",
+    "health": "curl -s http://localhost:8787/api/health | python3 -m json.tool",
     "backend": ".venv/bin/uvicorn backend.server:app --reload --port 8787",
     "opencode:serve": "opencode serve --port 4096",
     "electron": "npx electron app/main.js",

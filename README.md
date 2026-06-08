@@ -9,6 +9,37 @@ cd /Users/charliekrason/Documents/desk/untitled\ folder/sompter-ai
 npm run dev
 ```
 
+Or use the launcher script:
+
+```bash
+npm run start:app
+```
+
+## Package Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start all services in dev mode (concurrently) |
+| `npm run start:app` | Launch script with health checks per service |
+| `npm run stop` | Stop all Sompter processes |
+| `npm run health` | Check backend/Ollama/OpenCode status |
+
+## Making a Clickable Mac App
+
+To launch Sompter AI like a normal Mac app:
+
+1. Open **Automator** (from Applications)
+2. Choose **Application** type
+3. Add **Run Shell Script** action
+4. Enter:
+   ```bash
+   cd /Users/charliekrason/Documents/desk/untitled\ folder/sompter-ai && npm run start:app
+   ```
+5. File > Save as **Sompter AI.app**
+6. (Optional) Add to **Login Items** in System Settings > General > Login Items
+
+## Permissions Required
+
 ## Permissions Required
 
 - **Screen Recording** — needed for screenshot capture (macOS will prompt on first use)
@@ -20,12 +51,14 @@ npm run dev
 ```bash
 lsof -i :4096
 kill <PID>
+# Or: npm run stop
 ```
 
 ### Port 8787 in use
 ```bash
 lsof -i :8787
 kill <PID>
+# Or: npm run stop
 ```
 
 ### Ollama not running
