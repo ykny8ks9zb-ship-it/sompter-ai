@@ -119,12 +119,22 @@ Set in `.env`:
 OPENAI_API_KEY=sk-...
 ```
 
-## Preset Buttons
+## Custom Prompt Buttons
 
+Click **✏️ Prompts** to edit, add, or delete preset buttons. Each preset has:
+- **Label** — Button text
+- **Mode** — Screen (screenshot + AI), Chat (just ask), Control Mac, or Fix Project with OpenCode
+- **Prompt** — What the AI should do
+
+Presets are saved in localStorage and persist across app restarts. Click **↺ Reset** to restore defaults.
+
+Built-in presets:
 - **Fix screen** — Analyze screen for bugs/errors
 - **Explain screen** — Describe what's on screen
 - **Use web** — Identify web-related content
 - **Fix code** — Review visible code
+- **Control Mac** — Plan and execute actions
+- **Fix Project with OpenCode** — Run OpenCode project edits
 
 ## Architecture
 

@@ -198,10 +198,40 @@ header {
 }
 
 #presets {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  -webkit-app-region: no-drag;
+}
+
+#preset-buttons {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 5px;
-  -webkit-app-region: no-drag;
+}
+
+#preset-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+
+.preset-action-btn {
+  background: #2d2d4a;
+  border: 1px solid #3d3d5c;
+  color: #a78bfa;
+  padding: 7px 0;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.preset-action-btn:hover {
+  background: #3d3d5c;
+  border-color: #7c3aed;
+  color: #fff;
 }
 
 .preset-btn {
@@ -869,4 +899,125 @@ textarea.action-param {
 #setup-provider, #setup-project-path {
   color: #a78bfa;
   font-size: 11px;
+}
+
+/* ---- Prompts Panel ---- */
+
+#prompts-panel {
+  background: #1e1e38;
+  border: 1px solid #3d3d5c;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+#prompts-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a78bfa;
+}
+
+#prompts-header .small-btn {
+  font-size: 10px;
+  padding: 3px 8px;
+}
+
+#prompts-close-btn {
+  margin-left: auto;
+}
+
+#prompts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.prompts-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #16162a;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.prompts-item-label {
+  flex: 1;
+  color: #e0e0e0;
+}
+
+.prompts-item-mode {
+  font-size: 10px;
+  color: #666;
+  text-transform: uppercase;
+  min-width: 50px;
+}
+
+.prompts-item .small-btn {
+  font-size: 10px;
+  padding: 3px 8px;
+}
+
+#prompts-result {
+  background: #16162a;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+#prompts-editor {
+  background: #1e1e38;
+  border: 1px solid #3d3d5c;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+#prompts-editor-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#prompts-editor-fields .field-row {
+  align-items: flex-start;
+}
+
+#prompts-editor-fields .field-row label {
+  min-width: 55px;
+  padding-top: 5px;
+}
+
+#prompts-editor-fields textarea.action-param {
+  resize: vertical;
+}
+
+#prompts-editor-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.delete-btn {
+  background: #7f1d1d !important;
+  border-color: #991b1b !important;
+  color: #fca5a5 !important;
+  margin-left: auto;
+}
+
+.delete-btn:hover {
+  background: #991b1b !important;
+  color: #fff !important;
 }

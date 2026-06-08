@@ -31,13 +31,49 @@
     </div>
 
     <div id="presets">
-      <button class="preset-btn" data-prompt="Analyze the screen and identify any bugs, errors, or visual issues. Explain what's wrong and how to fix it.">Fix screen</button>
-      <button class="preset-btn" data-prompt="Look at the screen and explain what's happening in detail.">Explain screen</button>
-      <button class="preset-btn" data-prompt="Look at the screen and determine if there is any web-related content. If so, what could be done with it?">Use web</button>
-      <button class="preset-btn" data-prompt="Look at the code visible on the screen. Identify any bugs, suggest fixes, and provide improved code.">Fix code</button>
-      <button class="preset-btn control-btn" id="control-mac-btn">Control Mac</button>
-      <button class="preset-btn opencode-btn" id="opencode-btn">Fix Project with OpenCode</button>
-      <button class="preset-btn setup-btn" id="setup-btn">⚙ Setup</button>
+      <div id="preset-buttons"></div>
+      <div id="preset-actions">
+        <button class="preset-action-btn setup-btn" id="prompts-edit-btn">✏️ Prompts</button>
+        <button class="preset-action-btn setup-btn" id="setup-btn">⚙ Setup</button>
+      </div>
+    </div>
+
+    <div id="prompts-panel" class="hidden">
+      <div id="prompts-header">
+        <span>Edit Prompt Buttons</span>
+        <button id="prompts-add-btn" class="small-btn">+ Add</button>
+        <button id="prompts-reset-btn" class="small-btn">↺ Reset</button>
+        <button id="prompts-close-btn" class="small-btn">✕</button>
+      </div>
+      <div id="prompts-list"></div>
+      <div id="prompts-result" class="hidden"></div>
+    </div>
+
+    <div id="prompts-editor" class="hidden">
+      <div id="prompts-editor-fields">
+        <div class="field-row">
+          <label>Label:</label>
+          <input type="text" id="prompts-edit-label" class="action-param" placeholder="Button text" />
+        </div>
+        <div class="field-row">
+          <label>Mode:</label>
+          <select id="prompts-edit-mode" class="action-param">
+            <option value="screen">Screen (screenshot + AI)</option>
+            <option value="chat">Chat (just ask AI)</option>
+            <option value="control">Control Mac</option>
+            <option value="opencode">Fix Project with OpenCode</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label>Prompt:</label>
+          <textarea id="prompts-edit-prompt" class="action-param" rows="3" placeholder="What should the AI do?"></textarea>
+        </div>
+      </div>
+      <div id="prompts-editor-buttons">
+        <button id="prompts-save-btn" class="small-btn">Save</button>
+        <button id="prompts-editor-cancel-btn" class="small-btn">Cancel</button>
+        <button id="prompts-delete-btn" class="small-btn delete-btn">Delete</button>
+      </div>
     </div>
 
     <div id="setup-panel" class="hidden">
@@ -565,118 +601,71 @@
       currentAction = null;
     });
 
-    document.getElementById('control-mac-btn').addEventListener('click', startControl);
+    // ---- Default Presets ----
+    const DEFAULT_PRESETS = [
+      { id: 'fix_screen', label: 'Fix screen', prompt: "Analyze the screen and identify any bugs, errors, or visual issues. Explain what's wrong and how to fix it.", mode: 'screen' },
+      { id: 'explain_screen', label: 'Explain screen', prompt: "Look at the screen and explain what's happening in detail.", mode: 'screen' },
+      { id: 'use_web', label: 'Use web', prompt: 'Look at the screen and determine if there is any web-related content. If so, what could be done with it?', mode: 'screen' },
+      { id: 'fix_code', label: 'Fix code', prompt: 'Look at the code visible on the screen. Identify any bugs, suggest fixes, and provide improved code.', mode: 'screen' },
+      { id: 'control_mac', label: 'Control Mac', prompt: '', mode: 'control' },
+      { id: 'opencode_fix', label: 'Fix Project with OpenCode', prompt: 'Fix the issue visible on my screen and any code problems in this project.', mode: 'opencode' },
+    ];
 
-    $$('.preset-btn:not(.control-btn):not(.opencode-btn)').forEach((btn) => {
-      btn.addEventListener('click', () => ask(btn.dataset.prompt));
-    });
+    const LS_PRESETS = 'sompter_presets';
+    let presets = [];
+    let editingId = null;
+    let promptsPanelVisible = false;
+    let editorVisible = false;
 
-    sendBtn.addEventListener('click', () => {
-      ask(chatInput.value);
-      chatInput.value = '';
-    });
-
-    chatInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        sendBtn.click();
+    function loadPresets() {
+      const raw = localStorage.getItem(LS_PRESETS);
+      if (raw) {
+        try { presets = JSON.parse(raw); } catch { presets = [...DEFAULT_PRESETS]; }
+      } else {
+        presets = [...DEFAULT_PRESETS];
       }
-    });
-
-    const opencodeArea = $('#opencode-area');
-    const opencodePath = $('#opencode-path');
-    const opencodeStatus = $('#opencode-status');
-    const opencodeStatusText = $('#opencode-status-text');
-    const opencodeOutput = $('#opencode-output');
-    const opencodeOutputText = $('#opencode-output-text');
-    const opencodeSavePath = $('#opencode-save-path');
-
-    const savedPath = localStorage.getItem('sompter_opencode_path');
-    if (savedPath) opencodePath.value = savedPath;
-
-    opencodeSavePath.addEventListener('click', () => {
-      localStorage.setItem('sompter_opencode_path', opencodePath.value);
-      opencodeStatusText.textContent = 'Path saved.';
-      opencodeStatus.classList.remove('hidden');
-      setTimeout(() => opencodeStatus.classList.add('hidden'), 2000);
-    });
-
-    const opencodeReview = $('#opencode-review');
-    const reviewOutput = $('#review-output');
-    const reviewOutputText = $('#review-output-text');
-    const reviewTestArea = $('#review-test-area');
-    const reviewTestCommand = $('#review-test-command');
-    let lastProjectPath = '';
-    let lastPromptFile = '';
-
-    function showReviewOutput(text) {
-      reviewOutput.classList.remove('hidden');
-      reviewOutputText.textContent = text;
-      addMessage('assistant', text.slice(0, 500));
     }
 
-    document.getElementById('review-status-btn').addEventListener('click', async () => {
-      if (!lastProjectPath) return;
-      try {
-        const result = await window.electronAPI.projectStatus(lastProjectPath);
-        if (result.success) {
-          showReviewOutput(`Changed files:\n${result.files}`);
-        } else {
-          showReviewOutput(`Error: ${result.message}`);
-        }
-      } catch (err) {
-        showReviewOutput(`Error: ${err.message}`);
+    function savePresets() {
+      localStorage.setItem(LS_PRESETS, JSON.stringify(presets));
+    }
+
+    function renderPresetButtons() {
+      const container = $('#preset-buttons');
+      container.innerHTML = '';
+      presets.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'preset-btn';
+        if (p.mode === 'control') btn.classList.add('control-btn');
+        if (p.mode === 'opencode') btn.classList.add('opencode-btn');
+        btn.textContent = p.label;
+        btn.dataset.presetId = p.id;
+        btn.addEventListener('click', () => runPreset(p));
+        container.appendChild(btn);
+      });
+    }
+
+    async function runPreset(preset) {
+      switch (preset.mode) {
+        case 'screen':
+          setMode('screen');
+          addMessage('user', preset.label);
+          await ask(preset.prompt);
+          break;
+        case 'chat':
+          addMessage('user', preset.label);
+          await ask(preset.prompt);
+          break;
+        case 'control':
+          await startControl();
+          break;
+        case 'opencode':
+          await runOpencodeWithPrompt(preset.prompt);
+          break;
       }
-    });
+    }
 
-    document.getElementById('review-diff-btn').addEventListener('click', async () => {
-      if (!lastProjectPath) return;
-      try {
-        const result = await window.electronAPI.projectDiff(lastProjectPath);
-        if (result.success) {
-          showReviewOutput(`Diff summary:\n${result.stat}\n\nFull diff:\n${result.diff}`);
-        } else {
-          showReviewOutput(`Error: ${result.message}`);
-        }
-      } catch (err) {
-        showReviewOutput(`Error: ${err.message}`);
-      }
-    });
-
-    document.getElementById('review-test-btn').addEventListener('click', () => {
-      reviewTestArea.classList.toggle('hidden');
-    });
-
-    document.getElementById('review-test-run-btn').addEventListener('click', async () => {
-      if (!lastProjectPath) return;
-      const cmd = reviewTestCommand.value.trim();
-      if (!cmd) return;
-      reviewTestArea.classList.add('hidden');
-      try {
-        const result = await window.electronAPI.runTest(lastProjectPath, cmd);
-        if (result.success) {
-          showReviewOutput(`Tests passed:\n${result.message}`);
-        } else {
-          showReviewOutput(`Tests failed:\n${result.message}`);
-        }
-      } catch (err) {
-        showReviewOutput(`Error: ${err.message}`);
-      }
-    });
-
-    document.getElementById('review-open-btn').addEventListener('click', async () => {
-      if (!lastProjectPath) return;
-      await window.electronAPI.openFolder(lastProjectPath);
-    });
-
-    document.getElementById('review-prompt-btn').addEventListener('click', async () => {
-      if (lastPromptFile) {
-        await window.electronAPI.openFile(lastPromptFile);
-      } else if (lastProjectPath) {
-        await window.electronAPI.openFolder(lastProjectPath);
-      }
-    });
-
-    document.getElementById('opencode-btn').addEventListener('click', async () => {
+    async function runOpencodeWithPrompt(promptText) {
       const projectPath = opencodePath.value.trim();
       if (!projectPath) {
         addMessage('assistant', 'Please set a project path first.');
@@ -694,7 +683,7 @@
       lastPromptFile = '';
 
       try {
-        const result = await window.electronAPI.opencodeRun(projectPath, 'Fix the issue visible on my screen and any code problems in this project.');
+        const result = await window.electronAPI.opencodeRun(projectPath, promptText);
         opencodeOutput.classList.remove('hidden');
         opencodeReview.classList.remove('hidden');
 
@@ -722,6 +711,129 @@
         opencodeOutputText.textContent = `Error: ${err.message}`;
         addMessage('assistant', `Error: ${err.message}`);
         opencodeReview.classList.remove('hidden');
+      }
+    }
+
+    function showPromptResult(ok, msg) {
+      const el = $('#prompts-result');
+      el.classList.remove('hidden');
+      el.className = ok ? 'setup-result-ok' : 'setup-result-fail';
+      el.textContent = msg;
+      setTimeout(() => el.classList.add('hidden'), 3000);
+    }
+
+    function renderPromptsList() {
+      const list = $('#prompts-list');
+      list.innerHTML = '';
+      presets.forEach(p => {
+        const item = document.createElement('div');
+        item.className = 'prompts-item';
+        const modeIcon = { screen: '\u{1F4F7}', chat: '\u{1F4AC}', control: '\u{1F5B1}', opencode: '\u{1F4DD}' }[p.mode] || '\u{1F4AC}';
+        item.innerHTML = `<span class="prompts-item-label">${modeIcon} ${p.label}</span><span class="prompts-item-mode">${p.mode}</span><button class="small-btn prompts-edit-item" data-id="${p.id}">Edit</button>`;
+        list.appendChild(item);
+      });
+    }
+
+    function openEditor(preset) {
+      editingId = preset ? preset.id : null;
+      $('#prompts-edit-label').value = preset ? preset.label : '';
+      $('#prompts-edit-mode').value = preset ? preset.mode : 'screen';
+      $('#prompts-edit-prompt').value = preset ? preset.prompt : '';
+      $('#prompts-delete-btn').classList.toggle('hidden', !preset || DEFAULT_PRESETS.some(d => d.id === preset.id));
+      $('#prompts-editor').classList.remove('hidden');
+      editorVisible = true;
+    }
+
+    function closeEditor() {
+      $('#prompts-editor').classList.add('hidden');
+      editingId = null;
+      editorVisible = false;
+    }
+
+    // ---- Init presets ----
+    loadPresets();
+    renderPresetButtons();
+
+    $('#prompts-edit-btn').addEventListener('click', () => {
+      promptsPanelVisible = !promptsPanelVisible;
+      $('#prompts-panel').classList.toggle('hidden', !promptsPanelVisible);
+      if (promptsPanelVisible) {
+        closeEditor();
+        renderPromptsList();
+      }
+    });
+
+    $('#prompts-close-btn').addEventListener('click', () => {
+      promptsPanelVisible = false;
+      $('#prompts-panel').classList.add('hidden');
+    });
+
+    $('#prompts-add-btn').addEventListener('click', () => {
+      const id = 'custom_' + Date.now();
+      openEditor({ id, label: '', prompt: '', mode: 'screen' });
+    });
+
+    $('#prompts-reset-btn').addEventListener('click', () => {
+      presets = DEFAULT_PRESETS.map(p => ({ ...p }));
+      savePresets();
+      renderPresetButtons();
+      renderPromptsList();
+      showPromptResult(true, 'Reset to defaults');
+    });
+
+    $('#prompts-list').addEventListener('click', (e) => {
+      const btn = e.target.closest('.prompts-edit-item');
+      if (btn) {
+        const id = btn.dataset.id;
+        const preset = presets.find(p => p.id === id);
+        if (preset) openEditor(preset);
+      }
+    });
+
+    $('#prompts-save-btn').addEventListener('click', () => {
+      const label = $('#prompts-edit-label').value.trim();
+      const mode = $('#prompts-edit-mode').value;
+      const prompt = $('#prompts-edit-prompt').value.trim();
+      if (!label) { showPromptResult(false, 'Label is required'); return; }
+
+      if (editingId) {
+        const idx = presets.findIndex(p => p.id === editingId);
+        if (idx >= 0) {
+          presets[idx] = { ...presets[idx], label, mode, prompt };
+        } else {
+          presets.push({ id: editingId, label, mode, prompt });
+        }
+      } else {
+        presets.push({ id: 'custom_' + Date.now(), label, mode, prompt });
+      }
+      savePresets();
+      renderPresetButtons();
+      renderPromptsList();
+      closeEditor();
+      showPromptResult(true, 'Saved');
+    });
+
+    $('#prompts-editor-cancel-btn').addEventListener('click', closeEditor);
+
+    $('#prompts-delete-btn').addEventListener('click', () => {
+      if (editingId) {
+        presets = presets.filter(p => p.id !== editingId);
+        savePresets();
+        renderPresetButtons();
+        renderPromptsList();
+        closeEditor();
+        showPromptResult(true, 'Deleted');
+      }
+    });
+
+    sendBtn.addEventListener('click', () => {
+      ask(chatInput.value);
+      chatInput.value = '';
+    });
+
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        sendBtn.click();
       }
     });
 
