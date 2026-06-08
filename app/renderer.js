@@ -22,4 +22,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onYPositionChanged: (callback) => {
     ipcRenderer.on('y-position-changed', (_event, y) => callback(y));
   },
+
+  // Health
+  getHealth: () => ipcRenderer.invoke('getHealth'),
+
+  // Global toggle
+  onGlobalToggle: (callback) => {
+    ipcRenderer.on('global-toggle', () => callback());
+  },
 });

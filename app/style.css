@@ -716,3 +716,45 @@ textarea.action-param {
 .hidden {
   display: none !important;
 }
+
+/* ---- Status Footer ---- */
+
+#status-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 10px;
+  color: #666;
+  -webkit-app-region: no-drag;
+  border-top: 1px solid #2d2d4a;
+  margin-top: 2px;
+}
+
+.footer-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.health-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot-on {
+  background: #22c55e;
+  box-shadow: 0 0 3px #22c55e66;
+}
+
+.dot-off {
+  background: #555;
+}
+
+.footer-provider {
+  margin-left: auto;
+  color: #7c3aed;
+  font-weight: 500;
+}

@@ -126,6 +126,13 @@
       <input type="text" id="chat-input" placeholder="Ask anything..." />
       <button id="send-btn">Send</button>
     </div>
+
+    <div id="status-footer">
+      <span class="footer-item" id="footer-backend"><span class="health-dot" id="dot-backend"></span>Backend</span>
+      <span class="footer-item" id="footer-ollama"><span class="health-dot" id="dot-ollama"></span>Ollama</span>
+      <span class="footer-item" id="footer-opencode"><span class="health-dot" id="dot-opencode"></span>OpenCode</span>
+      <span class="footer-provider" id="footer-provider"></span>
+    </div>
   </div>
 
   <script>
@@ -185,6 +192,48 @@
     }
 
     initCollapse();
+
+    // ---- Global toggle (Cmd+Shift+A) ----
+    window.electronAPI.onGlobalToggle(async () => {
+      const st = readState();
+      if (st.collapsed) {
+        st.collapsed = false;
+        writeState(st);
+        await window.electronAPI.expandWindow(st.y);
+      } else {
+        st.collapsed = true;
+        writeState(st);
+        await window.electronAPI.collapseWindow(st.y);
+      }
+    });
+
+    // ---- Health polling ----
+    const dotBackend = $('#dot-backend');
+    const dotOllama = $('#dot-ollama');
+    const dotOpencode = $('#dot-opencode');
+    const footerProvider = $('#footer-provider');
+
+    function setDot(el, ok) {
+      el.className = 'health-dot ' + (ok ? 'dot-on' : 'dot-off');
+    }
+
+    async function pollHealth() {
+      try {
+        const h = await window.electronAPI.getHealth();
+        setDot(dotBackend, h.backend);
+        setDot(dotOllama, h.ollama);
+        setDot(dotOpencode, h.opencode);
+        footerProvider.textContent = h.provider || '';
+      } catch {
+        setDot(dotBackend, false);
+        setDot(dotOllama, false);
+        setDot(dotOpencode, false);
+        footerProvider.textContent = '';
+      }
+    }
+
+    pollHealth();
+    setInterval(pollHealth, 10000);
 
     // ---- Existing app code ----
 

@@ -2,6 +2,47 @@
 
 A floating always-on-top macOS sidebar AI assistant that screenshots your screen and answers questions about it.
 
+## Daily Run
+
+```bash
+cd /Users/charliekrason/Documents/desk/untitled\ folder/sompter-ai
+npm run dev
+```
+
+## Permissions Required
+
+- **Screen Recording** — needed for screenshot capture (macOS will prompt on first use)
+- **Accessibility** — needed for keyboard shortcuts and window management
+
+## Troubleshooting
+
+### Port 4096 in use
+```bash
+lsof -i :4096
+kill <PID>
+```
+
+### Port 8787 in use
+```bash
+lsof -i :8787
+kill <PID>
+```
+
+### Ollama not running
+```bash
+ollama serve
+```
+
+### OpenCode session not found
+The app falls back to saving the prompt to `.sompter/opencode-prompt.txt`. Open OpenCode desktop and run the prompt manually.
+
+### Screen Recording permission denied
+Go to System Settings > Privacy & Security > Screen Recording and enable Terminal/Electron.
+
+## Global Shortcut
+
+Press **Cmd+Shift+A** to toggle the sidebar between collapsed and expanded mode.
+
 ## Quick Start
 
 ```bash
