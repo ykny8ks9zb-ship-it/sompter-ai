@@ -1,7 +1,8 @@
 const { app, BrowserWindow, ipcMain, screen, globalShortcut, dialog, Tray, Menu, Notification, nativeImage } = require('electron');
 const path = require('path');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const fs = require('fs');
+const os = require('os');
 
 let mainWindow;
 let isSnapping = false;
@@ -227,7 +228,14 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Detect project root directory for service launching
+  const projectRoot = getProjectRoot();
+  if (app.isPackaged) {
+    console.log('Packaged mode — starting services...');
+    startBundledServices(projectRoot);
+  }
+
   createWindow();
   createTray();
 
@@ -236,6 +244,58 @@ app.whenReady().then(() => {
     if (app.dock && app.dock.hide) app.dock.hide();
   }
 });
+
+function getProjectRoot() {
+  if (app.isPackaged) {
+    // In packaged mode, the project root is the parent of the .app bundle
+    const appPath = app.getAppPath();
+    // app.getAppPath() returns .../Sompter AI.app/Contents/Resources/app
+    // Project root is 5 levels up: Resources/app -> Resources -> Contents -> .app -> parent
+    const candidate = path.resolve(appPath, '..', '..', '..', '..', '..');
+    if (fs.existsSync(path.join(candidate, 'package.json'))) return candidate;
+    // Try user's home/Documents/desk/untitled folder/sompter-ai as fallback
+    const devPath = path.join(os.homedir(), 'Documents', 'desk', 'untitled folder', 'sompter-ai');
+    if (fs.existsSync(path.join(devPath, 'package.json'))) return devPath;
+    return candidate;
+  }
+  // Dev mode: dirname of __dirname (app/) is project root
+  return path.resolve(__dirname, '..');
+}
+
+function startBundledServices(projectRoot) {
+  const resourcesPath = process.resourcesPath;
+  const scriptPath = path.join(resourcesPath, 'scripts', 'start-sompter-bundled.sh');
+
+  // First try the bundled script
+  if (fs.existsSync(scriptPath)) {
+    const { spawn } = require('child_process');
+    const proc = spawn('bash', [scriptPath, projectRoot, resourcesPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    });
+    let output = '';
+    proc.stdout.on('data', d => { output += d.toString(); });
+    proc.stderr.on('data', d => { output += d.toString(); });
+    proc.on('close', code => {
+      console.log('Bundled services script exited:', code);
+      if (output) console.log('Output:', output.slice(0, 500));
+    });
+    return;
+  }
+
+  // Fallback: try the dev script path
+  const devScript = path.join(projectRoot, 'scripts', 'start-sompter-bundled.sh');
+  if (fs.existsSync(devScript)) {
+    const { spawn } = require('child_process');
+    const proc = spawn('bash', [devScript, projectRoot, resourcesPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    });
+    proc.on('close', code => {
+      console.log('Dev services script exited:', code);
+    });
+  }
+}
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();

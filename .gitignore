@@ -3,3 +3,7 @@
 node_modules
 __pycache__
 .DS_Store
+dist/
+*.dmg
+out/
+
