@@ -39,6 +39,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Smart Fix
   smartFix: (projectPath, projectName, userPrompt) => ipcRenderer.invoke('smartFix', { projectPath, projectName, userPrompt }),
 
+  // Run Snapshots
+  runsList: (projectPath) => ipcRenderer.invoke('runsList', { projectPath }),
+  runsDetail: (projectPath, runId) => ipcRenderer.invoke('runsDetail', { projectPath, runId }),
+  runsUndo: (projectPath, runId) => ipcRenderer.invoke('runsUndo', { projectPath, runId }),
+
   // Global toggle
   onGlobalToggle: (callback) => {
     ipcRenderer.on('global-toggle', () => callback());

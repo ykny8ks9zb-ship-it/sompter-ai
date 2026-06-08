@@ -3,6 +3,8 @@ import base64
 import json
 import re
 import subprocess
+import uuid
+import datetime
 import requests
 import pyautogui
 from fastapi import FastAPI, HTTPException
@@ -659,15 +661,27 @@ async def opencode_run(req: OpenCodeRunRequest):
         except Exception:
             pass
 
+    run_id = create_run_snapshot(project_path, "opencode", opencode_prompt)
+
+    def finish(result: dict, status: str = "completed") -> dict:
+        output = result.get("output", "") or result.get("message", "")
+        finish_run_snapshot(project_path, run_id, output[:2000], status)
+        result["run_id"] = run_id
+        return result
+
     # Strategy 1: attach to a running opencode serve instance
     try:
-        return run_opencode_attach(project_path, opencode_prompt)
+        result = run_opencode_attach(project_path, opencode_prompt)
+        result["run_id"] = run_id
+        output = result.get("output", "")
+        finish_run_snapshot(project_path, run_id, output[:2000], "completed")
+        return result
     except SessionNotFoundError as e:
-        return save_opencode_prompt(project_path, opencode_prompt, raw_error=str(e))
+        return finish(save_opencode_prompt(project_path, opencode_prompt, raw_error=str(e)), "fallback")
     except FileNotFoundError:
-        return save_opencode_prompt(project_path, opencode_prompt)
+        return finish(save_opencode_prompt(project_path, opencode_prompt), "fallback")
     except subprocess.TimeoutExpired:
-        return save_opencode_prompt(project_path, opencode_prompt, raw_error="OpenCode attach timed out (180s).")
+        return finish(save_opencode_prompt(project_path, opencode_prompt, raw_error="OpenCode attach timed out (180s)."), "fallback")
     except Exception:
         pass
 
@@ -685,13 +699,15 @@ async def opencode_run(req: OpenCodeRunRequest):
             output = "(no output from OpenCode)"
 
         if result.returncode != 0:
-            return save_opencode_prompt(project_path, opencode_prompt)
+            return finish(save_opencode_prompt(project_path, opencode_prompt), "error")
 
-        return {"success": True, "output": output[:2000], "fallback": False}
+        response = {"success": True, "output": output[:2000], "fallback": False, "run_id": run_id}
+        finish_run_snapshot(project_path, run_id, output[:2000], "completed")
+        return response
     except (subprocess.TimeoutExpired, FileNotFoundError):
-        return save_opencode_prompt(project_path, opencode_prompt)
+        return finish(save_opencode_prompt(project_path, opencode_prompt), "fallback")
     except Exception as e:
-        return {"success": False, "output": f"Error running OpenCode: {str(e)}", "fallback": False}
+        return {"success": False, "output": f"Error running OpenCode: {str(e)}", "fallback": False, "run_id": run_id}
 
 
 def validate_project_path(project_path: str) -> str | None:
@@ -840,41 +856,54 @@ async def smartfix_run(req: SmartFixRequest):
     ]
     opencode_prompt = "\n".join(lines)
 
+    run_id = create_run_snapshot(project_path, "smartfix", opencode_prompt, screen_summary)
+
     try:
         oc_result = run_opencode_attach(project_path, opencode_prompt)
+        output = oc_result.get("output", "") or oc_result.get("message", "")
+        finish_run_snapshot(project_path, run_id, output[:2000], "completed")
         return {
             "success": oc_result.get("success", False),
+            "run_id": run_id,
             "screen_summary": screen_summary,
             "opencode_result": oc_result,
             "fallback": oc_result.get("fallback_saved", False),
         }
     except SessionNotFoundError as e:
         fallback = save_opencode_prompt(project_path, opencode_prompt, raw_error=str(e))
+        finish_run_snapshot(project_path, run_id, str(fallback), "fallback")
         return {
             "success": True,
+            "run_id": run_id,
             "screen_summary": screen_summary,
             "opencode_result": fallback,
             "fallback": True,
         }
     except FileNotFoundError:
         fallback = save_opencode_prompt(project_path, opencode_prompt)
+        finish_run_snapshot(project_path, run_id, str(fallback), "fallback")
         return {
             "success": True,
+            "run_id": run_id,
             "screen_summary": screen_summary,
             "opencode_result": fallback,
             "fallback": True,
         }
     except subprocess.TimeoutExpired:
         fallback = save_opencode_prompt(project_path, opencode_prompt, raw_error="OpenCode timed out (180s).")
+        finish_run_snapshot(project_path, run_id, str(fallback), "fallback")
         return {
             "success": True,
+            "run_id": run_id,
             "screen_summary": screen_summary,
             "opencode_result": fallback,
             "fallback": True,
         }
     except Exception as e:
+        finish_run_snapshot(project_path, run_id, str(e), "error")
         return {
             "success": False,
+            "run_id": run_id,
             "screen_summary": screen_summary,
             "opencode_result": {"success": False, "output": f"Smart Fix error: {str(e)}"},
             "fallback": False,
@@ -891,3 +920,174 @@ def validate_project_path_fast(path: str) -> str | None:
         if path.startswith(comp):
             return f"Blocked: suspicious path component '{comp}'"
     return None
+
+
+# ---- Run Snapshots ----
+
+RUNS_DIR_NAME = ".sompter/runs"
+SUSPICIOUS_RUN_FILES = [".env", "auth.json", "password", "api_key"]
+
+
+def get_runs_dir(project_path: str) -> str:
+    return os.path.join(project_path, RUNS_DIR_NAME)
+
+
+def create_run_id() -> str:
+    return datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:8]
+
+
+def save_run_file(run_dir: str, name: str, content: str):
+    os.makedirs(run_dir, exist_ok=True)
+    with open(os.path.join(run_dir, name), "w") as f:
+        f.write(content)
+
+
+def read_run_file(run_dir: str, name: str) -> str | None:
+    fpath = os.path.join(run_dir, name)
+    if os.path.exists(fpath):
+        with open(fpath) as f:
+            return f.read()
+    return None
+
+
+def run_git_safe(project_path: str, args: list[str], timeout: int = 15) -> subprocess.CompletedProcess | None:
+    try:
+        return subprocess.run(["git"] + args, cwd=project_path, capture_output=True, text=True, timeout=timeout)
+    except Exception:
+        return None
+
+
+def create_run_snapshot(project_path: str, mode: str, task: str, screen_summary: str = "") -> str:
+    run_id = create_run_id()
+    snapshot_dir = os.path.join(get_runs_dir(project_path), run_id)
+    os.makedirs(snapshot_dir, exist_ok=True)
+
+    meta = {
+        "run_id": run_id,
+        "mode": mode,
+        "timestamp": datetime.datetime.now().isoformat(),
+        "task": task[:200],
+        "screen_summary": screen_summary[:200],
+        "status": "running",
+    }
+    save_run_file(snapshot_dir, "meta.json", json.dumps(meta, indent=2))
+    save_run_file(snapshot_dir, "task.txt", task)
+
+    status = run_git_safe(project_path, ["status", "--short"])
+    save_run_file(snapshot_dir, "before-status.txt", status.stdout if status else "(no git)")
+
+    diff = run_git_safe(project_path, ["diff", "--color=never"])
+    save_run_file(snapshot_dir, "before-diff.patch", diff.stdout if diff else "(no git or no diff)")
+
+    return run_id
+
+
+def finish_run_snapshot(project_path: str, run_id: str, opencode_output: str, status: str = "completed"):
+    snapshot_dir = os.path.join(get_runs_dir(project_path), run_id)
+    if not os.path.isdir(snapshot_dir):
+        return
+
+    meta_path = os.path.join(snapshot_dir, "meta.json")
+    if os.path.exists(meta_path):
+        with open(meta_path) as f:
+            meta = json.load(f)
+        meta["end_timestamp"] = datetime.datetime.now().isoformat()
+        meta["status"] = status
+        with open(meta_path, "w") as f:
+            json.dump(meta, f, indent=2)
+
+    save_run_file(snapshot_dir, "opencode-output.txt", opencode_output)
+
+    status_res = run_git_safe(project_path, ["status", "--short"])
+    save_run_file(snapshot_dir, "after-status.txt", status_res.stdout if status_res else "(no git)")
+
+    diff = run_git_safe(project_path, ["diff", "--color=never"])
+    save_run_file(snapshot_dir, "after-diff.patch", diff.stdout if diff else "(no git or no diff)")
+
+
+def list_run_snapshots(project_path: str) -> list[dict]:
+    runs_dir = get_runs_dir(project_path)
+    if not os.path.isdir(runs_dir):
+        return []
+
+    runs = []
+    for name in sorted(os.listdir(runs_dir), reverse=True):
+        meta_path = os.path.join(runs_dir, name, "meta.json")
+        if os.path.exists(meta_path):
+            with open(meta_path) as f:
+                runs.append(json.load(f))
+            if len(runs) >= 10:
+                break
+    return runs
+
+
+def get_run_detail(project_path: str, run_id: str) -> dict | None:
+    snapshot_dir = os.path.join(get_runs_dir(project_path), run_id)
+    if not os.path.isdir(snapshot_dir):
+        return None
+
+    detail = {}
+    for fname in ["meta.json", "task.txt", "before-status.txt", "before-diff.patch",
+                   "opencode-output.txt", "after-status.txt", "after-diff.patch"]:
+        content = read_run_file(snapshot_dir, fname)
+        if content is not None:
+            key = fname.replace(".", "_")
+            detail[key] = content[:5000] if len(content) > 5000 else content
+    return detail
+
+
+@app.get("/api/runs/list")
+async def runs_list(project_path: str):
+    err = validate_project_path_fast(os.path.abspath(os.path.expanduser(project_path)))
+    if err:
+        return {"success": False, "runs": [], "message": err}
+    return {"success": True, "runs": list_run_snapshots(project_path)}
+
+
+@app.get("/api/runs/detail")
+async def runs_detail(project_path: str, run_id: str):
+    err = validate_project_path_fast(os.path.abspath(os.path.expanduser(project_path)))
+    if err:
+        return {"success": False, "message": err}
+    detail = get_run_detail(project_path, run_id)
+    if not detail:
+        return {"success": False, "message": "Run not found"}
+    return {"success": True, "detail": detail}
+
+
+class UndoRequest(BaseModel):
+    project_path: str
+    run_id: str
+
+
+@app.post("/api/runs/undo")
+async def runs_undo(req: UndoRequest):
+    project_path = os.path.abspath(os.path.expanduser(req.project_path))
+    err = validate_project_path_fast(project_path)
+    if err:
+        return {"success": False, "message": err}
+
+    snapshot_dir = os.path.join(get_runs_dir(project_path), req.run_id)
+    if not os.path.isdir(snapshot_dir):
+        return {"success": False, "message": "Run snapshot not found"}
+
+    before_diff = read_run_file(snapshot_dir, "before-diff.patch")
+    if not before_diff or before_diff.strip() in ("", "(no git or no diff)", "(no changes)"):
+        return {"success": False, "message": "No changes to undo"}
+
+    for sf in SUSPICIOUS_RUN_FILES:
+        if sf in before_diff.lower():
+            return {"success": False, "message": f"Undo blocked: snapshot touches '{sf}' files. Review with Show Diff."}
+
+    try:
+        result = subprocess.run(
+            ["git", "apply", "--reverse", os.path.join(snapshot_dir, "before-diff.patch")],
+            cwd=project_path, capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            return {"success": True, "message": "Changes reverted. Review with Show Diff."}
+        return {"success": False, "message": f"Undo failed: {result.stderr[:300]}"}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "message": "Undo timed out"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}

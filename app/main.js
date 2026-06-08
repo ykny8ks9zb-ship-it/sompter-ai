@@ -291,3 +291,35 @@ ipcMain.handle('selectFolder', async () => {
   }
   return { success: true, path: result.filePaths[0] };
 });
+
+ipcMain.handle('runsList', async (_event, { projectPath }) => {
+  try {
+    const r = await fetch(`${BACKEND}/api/runs/list?project_path=${encodeURIComponent(projectPath)}`);
+    return await r.json();
+  } catch (err) {
+    return { success: false, runs: [], message: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('runsDetail', async (_event, { projectPath, runId }) => {
+  try {
+    const r = await fetch(`${BACKEND}/api/runs/detail?project_path=${encodeURIComponent(projectPath)}&run_id=${encodeURIComponent(runId)}`);
+    return await r.json();
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('runsUndo', async (_event, { projectPath, runId }) => {
+  try {
+    const r = await fetch(`${BACKEND}/api/runs/undo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_path: projectPath, run_id: runId }),
+    });
+    return await r.json();
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
