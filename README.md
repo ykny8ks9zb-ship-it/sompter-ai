@@ -121,6 +121,32 @@ npm run start:app
 
 This runs everything from Terminal with full logs visible.
 
+## First-Run Onboarding
+
+When you launch Sompter AI for the first time (or after clearing the setup flag), an onboarding panel opens automatically to guide you through setup.
+
+### Onboarding Steps
+
+1. **Welcome** — Overview of what Sompter can do
+2. **Permissions** — Grant Screen Recording and Accessibility permissions
+3. **Services** — Check that Backend, Ollama, and OpenCode are running
+4. **Choose Project** — Select a folder and save it as a project profile
+5. **Pick AI Provider** — Choose Auto (recommended), Ollama, Gemini, or OpenAI
+6. **Finish** — Try Explain Screen or Smart Fix, or open the Setup panel
+
+### Navigation
+
+- **Next / Back** — Move between steps
+- **Skip** — Mark onboarding as complete and close the panel
+- **Finish** — Complete onboarding (reopening does not show again)
+
+### Reopening
+
+If you skip or finish onboarding, you can reopen it anytime:
+
+1. Click **⚙ Setup** in the sidebar
+2. Click **📖 Reopen Setup Guide** at the bottom of the Setup panel
+
 ## Setup Checklist
 
 1. Run `npm run start:app`

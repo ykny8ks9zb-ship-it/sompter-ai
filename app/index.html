@@ -146,6 +146,10 @@
         </label>
       </div>
 
+      <div id="setup-onboarding-row">
+        <button class="setup-btn" id="setup-reopen-onboarding-btn">📖 Reopen Setup Guide</button>
+      </div>
+
       <div id="setup-result" class="hidden"></div>
     </div>
 
@@ -231,6 +235,133 @@
         <pre id="diagnostics-text">Loading...</pre>
       </div>
       <div id="diagnostics-result" class="hidden"></div>
+    </div>
+
+    <div id="onboarding-panel" class="hidden">
+      <div id="onboarding-header">
+        <span>Setup Guide</span>
+        <button id="onboarding-close-btn" class="small-btn">✕</button>
+      </div>
+      <div id="onboarding-progress">
+        <div id="onboarding-progress-fill"></div>
+        <span id="onboarding-step-label">Step 1/6</span>
+      </div>
+      <div id="onboarding-content">
+
+        <div id="onboarding-step-1" class="onboarding-step">
+          <div class="onboarding-step-title">Welcome to Sompter AI</div>
+          <div class="onboarding-step-desc">Your macOS AI sidebar assistant that can see your screen, answer questions, and control your Mac.</div>
+          <div class="onboarding-features">
+            <div class="onboarding-feature">👁 See your screen and answer questions</div>
+            <div class="onboarding-feature">🖱 Control your Mac with confirmation</div>
+            <div class="onboarding-feature">🔧 Fix projects with OpenCode AI</div>
+            <div class="onboarding-feature">📋 Review diffs and undo AI changes</div>
+            <div class="onboarding-feature">📦 Packaged as a real macOS app</div>
+          </div>
+        </div>
+
+        <div id="onboarding-step-2" class="onboarding-step hidden">
+          <div class="onboarding-step-title">Grant Permissions</div>
+          <div class="onboarding-step-desc">Sompter needs two permissions to work. Click each button to open System Settings, then grant access.</div>
+          <div class="onboarding-perm-check">
+            <span class="onboarding-perm-dot" id="onb-screen-dot"></span>
+            <span class="onboarding-perm-label">Screen Recording</span>
+          </div>
+          <div class="onboarding-perm-check">
+            <span class="onboarding-perm-dot" id="onb-access-dot"></span>
+            <span class="onboarding-perm-label">Accessibility</span>
+          </div>
+          <div class="onboarding-perm-buttons">
+            <button class="setup-btn onboarding-perm-btn" id="onb-screen-btn">⏺ Open Screen Recording</button>
+            <button class="setup-btn onboarding-perm-btn" id="onb-access-btn">🖱 Open Accessibility</button>
+            <button class="setup-btn test-btn onboarding-perm-btn" id="onb-test-screen-btn">📷 Test Screenshot</button>
+            <button class="setup-btn test-btn onboarding-perm-btn" id="onb-test-control-btn">🖱 Test Control</button>
+            <button class="setup-btn onboarding-perm-btn" id="onb-check-perms-btn">✅ Refresh Status</button>
+          </div>
+          <div id="onboarding-perm-status" class="hidden"></div>
+        </div>
+
+        <div id="onboarding-step-3" class="onboarding-step hidden">
+          <div class="onboarding-step-title">Check Services</div>
+          <div class="onboarding-step-desc">Sompter needs the backend, Ollama (local AI), and OpenCode to be running.</div>
+          <div class="onboarding-srv-check">
+            <span class="onboarding-perm-dot" id="onb-backend-dot"></span>
+            <span class="onboarding-perm-label">Backend · API server</span>
+          </div>
+          <div class="onboarding-srv-check">
+            <span class="onboarding-perm-dot" id="onb-ollama-dot"></span>
+            <span class="onboarding-perm-label">Ollama · Local AI</span>
+          </div>
+          <div class="onboarding-srv-check">
+            <span class="onboarding-perm-dot" id="onb-opencode-dot"></span>
+            <span class="onboarding-perm-label">OpenCode · Project edits</span>
+          </div>
+          <div class="onboarding-srv-buttons">
+            <button class="setup-btn test-btn" id="onb-check-srv-btn">🔄 Check Services</button>
+            <button class="setup-btn" id="onb-open-srv-btn">🛠 Open Services Panel</button>
+          </div>
+          <div id="onboarding-srv-status" class="hidden"></div>
+        </div>
+
+        <div id="onboarding-step-4" class="onboarding-step hidden">
+          <div class="onboarding-step-title">Choose a Project</div>
+          <div class="onboarding-step-desc">Select a folder for OpenCode to edit. You can change this later.</div>
+          <div class="field-row">
+            <input type="text" id="onb-project-path" class="action-param" placeholder="/path/to/project" readonly />
+            <button id="onb-choose-folder-btn" class="small-btn">Choose</button>
+          </div>
+          <div class="field-row" style="margin-top:4px;">
+            <input type="text" id="onb-profile-name" class="action-param" placeholder="Profile name (e.g. My Project)" />
+            <button id="onb-save-profile-btn" class="small-btn">Save</button>
+          </div>
+          <div id="onboarding-project-status" class="hidden"></div>
+          <div class="onboarding-note">OpenCode uses the project's context to make better edits. You can switch projects later from the OpenCode section.</div>
+        </div>
+
+        <div id="onboarding-step-5" class="onboarding-step hidden">
+          <div class="onboarding-step-title">Pick an AI Provider</div>
+          <div class="onboarding-step-desc">Choose how Sompter processes your requests.</div>
+          <div class="onboarding-provider-opt" data-mode="auto">
+            <strong>Auto (Recommended)</strong> · Tries Ollama first, falls back to Gemini, then OpenAI
+          </div>
+          <div class="onboarding-provider-opt" data-mode="ollama">
+            <strong>Ollama (Free, Local)</strong> · Runs entirely on your Mac. No internet needed. No API key.
+          </div>
+          <div class="onboarding-provider-opt" data-mode="gemini">
+            <strong>Gemini (Free Tier)</strong> · Google AI. Requires a free API key.
+          </div>
+          <div class="onboarding-provider-opt" data-mode="openai">
+            <strong>OpenAI (Paid)</strong> · Requires API credits (separate from ChatGPT Plus).
+          </div>
+          <div class="onboarding-srv-buttons" style="margin-top:8px;">
+            <button class="setup-btn" id="onb-open-models-btn">🧠 Open Models Panel</button>
+          </div>
+          <div id="onboarding-provider-status" class="hidden"></div>
+        </div>
+
+        <div id="onboarding-step-6" class="onboarding-step hidden">
+          <div class="onboarding-step-title">You're Ready!</div>
+          <div class="onboarding-step-desc">Sompter AI is set up and ready to help. Here are some things to try:</div>
+          <div class="onboarding-srv-buttons">
+            <button class="setup-btn test-btn" id="onb-try-explain-btn">👁 Try Explain Screen</button>
+            <button class="setup-btn" id="onb-try-smartfix-btn">🔧 Try Smart Fix</button>
+            <button class="setup-btn" id="onb-try-setup-btn">⚙ Open Setup</button>
+          </div>
+          <div class="onboarding-note" style="margin-top:8px;">
+            Press <strong>Cmd+Shift+A</strong> anytime to toggle the sidebar.
+            Right-click the menu bar icon for quick actions.
+          </div>
+        </div>
+
+      </div>
+      <div id="onboarding-nav">
+        <button class="small-btn" id="onboarding-skip-btn">Skip</button>
+        <div id="onboarding-nav-right">
+          <button class="small-btn" id="onboarding-back-btn">← Back</button>
+          <button class="setup-btn" id="onboarding-next-btn">Next →</button>
+          <button class="setup-btn hidden" id="onboarding-finish-btn">Finish ✓</button>
+        </div>
+      </div>
     </div>
 
     <div id="services-panel" class="hidden">
@@ -452,7 +583,7 @@
     // ---- Menu action listener (from tray) ----
     window.electronAPI.onMenuAction(async (action) => {
       if (action === 'smartfix') {
-        await runSmartFix();
+        await smartFix();
       } else if (action === 'setup') {
         setupVisible = true;
         setupPanel.classList.remove('hidden');
@@ -1509,9 +1640,6 @@
 
     // ---- Init profiles on load ----
     initProjectProfile();
-      ask(chatInput.value);
-      chatInput.value = '';
-    });
 
     chatInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
@@ -2035,6 +2163,271 @@
         await runServiceAction(action);
       });
     });
+
+    // ---- Onboarding Panel ----
+
+    const onboardingPanel = $('#onboarding-panel');
+    const onboardingStepLabel = $('#onboarding-step-label');
+    const onboardingProgressFill = $('#onboarding-progress-fill');
+    const onboardingNavBtns = { back: $('#onboarding-back-btn'), next: $('#onboarding-next-btn'), finish: $('#onboarding-finish-btn'), skip: $('#onboarding-skip-btn') };
+    const totalSteps = 6;
+    let currentStep = 1;
+    let onboardingVisible = false;
+
+    function isOnboardingComplete() {
+      return localStorage.getItem('sompter_onboarding_complete') === 'true';
+    }
+
+    function setOnboardingComplete(val) {
+      if (val) {
+        localStorage.setItem('sompter_onboarding_complete', 'true');
+      } else {
+        localStorage.removeItem('sompter_onboarding_complete');
+      }
+    }
+
+    function showOnboarding(step) {
+      currentStep = step || 1;
+      // Hide all steps
+      for (let i = 1; i <= totalSteps; i++) {
+        const el = document.getElementById('onboarding-step-' + i);
+        if (el) el.classList.add('hidden');
+      }
+      const el = document.getElementById('onboarding-step-' + currentStep);
+      if (el) el.classList.remove('hidden');
+
+      onboardingStepLabel.textContent = 'Step ' + currentStep + '/' + totalSteps;
+      const pct = ((currentStep - 1) / (totalSteps - 1)) * 100;
+      onboardingProgressFill.style.width = pct + '%';
+
+      const isLast = currentStep === totalSteps;
+      onboardingNavBtns.next.classList.toggle('hidden', isLast);
+      onboardingNavBtns.finish.classList.toggle('hidden', !isLast);
+      onboardingNavBtns.back.classList.toggle('hidden', currentStep === 1);
+
+      // Ensure panel expanded
+      onboardingVisible = true;
+      onboardingPanel.classList.remove('hidden');
+
+      // Auto-refresh status for step 2 (permissions) and step 3 (services)
+      if (currentStep === 2) refreshOnboardingPerms();
+      if (currentStep === 3) refreshOnboardingServices();
+    }
+
+    async function refreshOnboardingPerms() {
+      try {
+        const st = await window.electronAPI.getSetupStatus();
+        setOnbDot('onb-screen-dot', st.screen_recording ? 'green' : 'red');
+        setOnbDot('onb-access-dot', st.accessibility ? 'green' : 'red');
+      } catch { }
+    }
+
+    async function refreshOnboardingServices() {
+      try {
+        const st = await window.electronAPI.getServiceStatus();
+        setOnbDot('onb-backend-dot', st.backend && st.backend.alive ? 'green' : 'red');
+        setOnbDot('onb-ollama-dot', st.ollama && st.ollama.alive ? 'green' : 'red');
+        setOnbDot('onb-opencode-dot', st.opencode && st.opencode.alive ? 'green' : 'red');
+      } catch { }
+    }
+
+    function setOnbDot(id, cls) {
+      const el = document.getElementById(id);
+      if (el) { el.className = 'onboarding-perm-dot'; if (cls) el.classList.add(cls); }
+    }
+
+    function showOnbStatus(id, ok, msg) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove('hidden');
+      el.className = ok ? 'ok' : 'err';
+      el.textContent = msg;
+      setTimeout(() => el.classList.add('hidden'), 4000);
+    }
+
+    function hideAllPanelsExcept(excludeId) {
+      const panels = ['#prompts-panel', '#history-panel', '#setup-panel', '#models-panel', '#diagnostics-panel', '#services-panel', '#onboarding-panel'];
+      panels.forEach(sel => {
+        if (sel !== '#' + excludeId) {
+          const p = document.querySelector(sel);
+          if (p) p.classList.add('hidden');
+        }
+      });
+    }
+
+    // Navigation
+    onboardingNavBtns.next.addEventListener('click', () => {
+      if (currentStep < totalSteps) showOnboarding(currentStep + 1);
+    });
+
+    onboardingNavBtns.back.addEventListener('click', () => {
+      if (currentStep > 1) showOnboarding(currentStep - 1);
+    });
+
+    onboardingNavBtns.skip.addEventListener('click', () => {
+      setOnboardingComplete(true);
+      onboardingPanel.classList.add('hidden');
+      onboardingVisible = false;
+    });
+
+    onboardingNavBtns.finish.addEventListener('click', () => {
+      setOnboardingComplete(true);
+      onboardingPanel.classList.add('hidden');
+      onboardingVisible = false;
+    });
+
+    $('#onboarding-close-btn').addEventListener('click', () => {
+      onboardingPanel.classList.add('hidden');
+      onboardingVisible = false;
+    });
+
+    // Step 2: Permissions
+    $('#onb-screen-btn').addEventListener('click', async () => {
+      await window.electronAPI.openPrivacySettings('Privacy_ScreenCapture');
+    });
+    $('#onb-access-btn').addEventListener('click', async () => {
+      await window.electronAPI.openPrivacySettings('Privacy_Accessibility');
+    });
+    $('#onb-test-screen-btn').addEventListener('click', async () => {
+      const r = await window.electronAPI.testScreenshot();
+      showOnbStatus('onboarding-perm-status', r.success, r.success ? 'Screenshot OK' : r.message);
+      if (r.success) refreshOnboardingPerms();
+    });
+    $('#onb-test-control-btn').addEventListener('click', async () => {
+      const r = await window.electronAPI.testControl();
+      showOnbStatus('onboarding-perm-status', r.success, r.success ? 'Control OK' : r.message);
+      if (r.success) refreshOnboardingPerms();
+    });
+    $('#onb-check-perms-btn').addEventListener('click', async () => {
+      await refreshOnboardingPerms();
+      showOnbStatus('onboarding-perm-status', true, 'Permissions refreshed');
+    });
+
+    // Step 3: Services
+    $('#onb-check-srv-btn').addEventListener('click', async () => {
+      await refreshOnboardingServices();
+      showOnbStatus('onboarding-srv-status', true, 'Services refreshed');
+    });
+    $('#onb-open-srv-btn').addEventListener('click', () => {
+      hideAllPanelsExcept('onboarding-panel');
+      const sp = $('#services-panel');
+      if (sp) {
+        servicesVisible = true;
+        sp.classList.remove('hidden');
+        servicesResult.classList.add('hidden');
+        updateServiceStatus();
+      }
+    });
+
+    // Step 4: Project
+    $('#onb-choose-folder-btn').addEventListener('click', async () => {
+      const r = await window.electronAPI.selectFolder();
+      if (r.success) {
+        $('#onb-project-path').value = r.path;
+        // Auto-fill profile name from folder name
+        const folderName = r.path.split('/').pop() || '';
+        const pn = $('#onb-profile-name');
+        if (pn && !pn.value) pn.value = folderName;
+      }
+    });
+    $('#onb-save-profile-btn').addEventListener('click', () => {
+      const path = $('#onb-project-path').value;
+      const name = $('#onb-profile-name').value || path.split('/').pop() || 'My Project';
+      if (!path) {
+        showOnbStatus('onboarding-project-status', false, 'Choose a folder first');
+        return;
+      }
+      const profiles = loadProfiles();
+      const existing = profiles.find(p => p.path === path);
+      if (existing) {
+        showOnbStatus('onboarding-project-status', true, 'Project already saved: ' + existing.name);
+        return;
+      }
+      const id = 'prof_' + Date.now();
+      profiles.push({ id, name, path });
+      saveProfiles(profiles);
+      selectProfile(id);
+      renderProjectSelect();
+      showOnbStatus('onboarding-project-status', true, 'Saved profile: ' + name);
+    });
+
+    // Step 5: Provider
+    document.querySelectorAll('.onboarding-provider-opt').forEach(el => {
+      el.addEventListener('click', async () => {
+        // Highlight selected
+        document.querySelectorAll('.onboarding-provider-opt').forEach(o => o.style.border = 'none');
+        el.style.border = '1px solid #8b5cf6';
+        const mode = el.dataset.mode;
+        try {
+          const r = await window.electronAPI.saveSettings({ mode });
+          showOnbStatus('onboarding-provider-status', r.success, r.success ? 'Set mode to ' + mode : r.message);
+        } catch (err) {
+          showOnbStatus('onboarding-provider-status', false, 'Error: ' + err.message);
+        }
+      });
+    });
+    $('#onb-open-models-btn').addEventListener('click', () => {
+      hideAllPanelsExcept('onboarding-panel');
+      const mp = $('#models-panel');
+      if (mp) {
+        modelsVisible = true;
+        mp.classList.remove('hidden');
+        modelsResult.classList.add('hidden');
+        loadModelsSettings();
+      }
+    });
+
+    // Step 6: Try buttons
+    $('#onb-try-explain-btn').addEventListener('click', async () => {
+      const input = $('#prompt-input');
+      if (input) {
+        input.value = 'Explain what is on my screen';
+        const modeRadio = document.querySelector('#preset-buttons input[name="mode"]:checked') ||
+                         document.querySelector('input[name="mode"][value="screen"]');
+        if (modeRadio) {
+          // Find closest preset button with mode=screen and click
+          const screenPreset = document.querySelector('#preset-buttons .preset-btn[data-mode="screen"]');
+          if (screenPreset) screenPreset.click();
+        }
+        // Trigger ask
+        document.querySelector('#prompt-ask-btn')?.click();
+      }
+    });
+    $('#onb-try-smartfix-btn').addEventListener('click', async () => {
+      hideAllPanelsExcept('onboarding-panel');
+      await runSmartFix();
+    });
+    $('#onb-try-setup-btn').addEventListener('click', () => {
+      hideAllPanelsExcept('onboarding-panel');
+      setupVisible = true;
+      setupPanel.classList.remove('hidden');
+      setupResult.classList.add('hidden');
+      loadMenuBarPrefs();
+      refreshSetupStatus();
+    });
+
+    // Reopen onboarding from Setup
+    $('#setup-reopen-onboarding-btn').addEventListener('click', () => {
+      hideAllPanelsExcept('setup-panel');
+      setOnboardingComplete(false);
+      showOnboarding(1);
+    });
+
+    // First-run detection: run after everything else initializes
+    setTimeout(() => {
+      if (!isOnboardingComplete()) {
+        // Expand sidebar, show onboarding
+        const st = readState();
+        if (st.collapsed) {
+          st.collapsed = false;
+          writeState(st);
+          window.electronAPI.expandWindow(st.y);
+        }
+        // Hide other panels
+        hideAllPanelsExcept('');
+        showOnboarding(1);
+      }
+    }, 500);
   </script>
 </body>
 </html>
