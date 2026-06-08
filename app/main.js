@@ -297,7 +297,34 @@ ipcMain.handle('runsList', async (_event, { projectPath }) => {
     const r = await fetch(`${BACKEND}/api/runs/list?project_path=${encodeURIComponent(projectPath)}`);
     return await r.json();
   } catch (err) {
-    return { success: false, runs: [], message: `Error: ${err.message}` };
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('getDiagnostics', async (_event, { projectPath }) => {
+  try {
+    const url = projectPath
+      ? `${BACKEND}/api/diagnostics?project_path=${encodeURIComponent(projectPath)}`
+      : `${BACKEND}/api/diagnostics`;
+    const r = await fetch(url);
+    return await r.json();
+  } catch (err) {
+    return { success: false, error: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('saveDiagnosticsReport', async (_event, { projectPath, data }) => {
+  try {
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const reportDir = projectPath
+      ? path.join(projectPath, '.sompter', 'diagnostics')
+      : path.join(__dirname, '..', '.sompter', 'diagnostics');
+    fs.mkdirSync(reportDir, { recursive: true });
+    const reportPath = path.join(reportDir, `diagnostic-${ts}.json`);
+    fs.writeFileSync(reportPath, JSON.stringify(data, null, 2), 'utf-8');
+    return { success: true, path: reportPath };
+  } catch (err) {
+    return { success: false, error: `Error: ${err.message}` };
   }
 });
 

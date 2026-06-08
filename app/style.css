@@ -1195,3 +1195,68 @@ textarea.action-param {
   border-color: #16a34a !important;
   color: #fff !important;
 }
+
+/* ---- Diagnostics Panel ---- */
+
+#diagnostics-panel {
+  background: #1e1e38;
+  border: 1px solid #3d3d5c;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+}
+
+#diagnostics-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a78bfa;
+}
+
+#diagnostics-header .small-btn {
+  font-size: 10px;
+  padding: 3px 8px;
+}
+
+#diagnostics-close-btn {
+  margin-left: auto;
+}
+
+#diagnostics-content {
+  background: #16162a;
+  border-radius: 6px;
+  padding: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+#diagnostics-text {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #c0c0d0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0;
+}
+
+#diagnostics-result {
+  background: #16162a;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+#diagnostics-panel .setup-result-ok {
+  color: #22c55e;
+}
+
+#diagnostics-panel .setup-result-fail {
+  color: #ef4444;
+}

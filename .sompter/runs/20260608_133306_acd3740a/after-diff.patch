@@ -1,0 +1,8 @@
+diff --git a/test-undo-2.md b/test-undo-2.md
+index 12c79f2..4ca2282 100644
+--- a/test-undo-2.md
++++ b/test-undo-2.md
+@@ -1 +1,3 @@
+ temp undo content
++This line was added after snapshot
++hello world

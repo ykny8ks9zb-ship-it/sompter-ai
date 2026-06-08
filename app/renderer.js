@@ -44,6 +44,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   runsDetail: (projectPath, runId) => ipcRenderer.invoke('runsDetail', { projectPath, runId }),
   runsUndo: (projectPath, runId) => ipcRenderer.invoke('runsUndo', { projectPath, runId }),
 
+  // Diagnostics
+  getDiagnostics: (projectPath) => ipcRenderer.invoke('getDiagnostics', { projectPath }),
+  saveDiagnosticsReport: (projectPath, data) => ipcRenderer.invoke('saveDiagnosticsReport', { projectPath, data }),
+
   // Global toggle
   onGlobalToggle: (callback) => {
     ipcRenderer.on('global-toggle', () => callback());

@@ -3,6 +3,7 @@ import base64
 import json
 import re
 import subprocess
+import socket
 import uuid
 import datetime
 import requests
@@ -922,7 +923,100 @@ def validate_project_path_fast(path: str) -> str | None:
     return None
 
 
-# ---- Run Snapshots ----
+# ---- Diagnostics / Bug Report ----
+
+SECRET_PATTERNS = [
+    re.compile(r"sk-[a-zA-Z0-9]{20,}"),
+    re.compile(r"AIza[0-9A-Za-z\-_]{35}"),
+    re.compile(r"bearer\s+[a-zA-Z0-9\-_\.]{20,}", re.IGNORECASE),
+    re.compile(r"(api[_-]?key|apikey|secret|password|token)\s*[:=]\s*['\"]?[a-zA-Z0-9\-_\.]{8,}['\"]?", re.IGNORECASE),
+]
+
+
+def mask_value(val: str) -> str:
+    for pat in SECRET_PATTERNS:
+        val = pat.sub(lambda m: m.group(0)[:4] + "..." + m.group(0)[-4:] if len(m.group(0)) > 12 else m.group(0)[:4] + "...", val)
+    return val
+
+
+def mask_dict(obj):
+    if isinstance(obj, dict):
+        return {k: mask_dict(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [mask_dict(v) for v in obj]
+    elif isinstance(obj, str):
+        return mask_value(obj)
+    return obj
+
+
+@app.get("/api/diagnostics")
+async def diagnostics(project_path: str | None = None):
+    data = {
+        "timestamp": datetime.datetime.now().isoformat(),
+        "app": {},
+        "system": {},
+        "services": {},
+        "project": None,
+        "snapshots": [],
+    }
+
+    pkg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "package.json")
+    if os.path.isfile(pkg_path):
+        try:
+            with open(pkg_path) as f:
+                pkg = json.load(f)
+            data["app"]["version"] = pkg.get("version", "unknown")
+            data["app"]["name"] = pkg.get("name", "unknown")
+        except Exception:
+            data["app"]["version"] = "unknown"
+    else:
+        data["app"]["version"] = "unknown"
+
+    repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=repo_dir, capture_output=True, text=True, timeout=5)
+        data["app"]["git_commit"] = r.stdout.strip() if r.returncode == 0 else "unknown"
+    except Exception:
+        data["app"]["git_commit"] = "unknown"
+
+    data["system"]["python"] = subprocess.run(["python3", "--version"], capture_output=True, text=True, timeout=5).stdout.strip() or "unknown"
+    try:
+        r = subprocess.run(["node", "--version"], capture_output=True, text=True, timeout=5)
+        data["system"]["node"] = r.stdout.strip() if r.returncode == 0 else "not found"
+    except Exception:
+        data["system"]["node"] = "not found"
+    try:
+        r = subprocess.run(["npm", "--version"], capture_output=True, text=True, timeout=5)
+        data["system"]["npm"] = r.stdout.strip() if r.returncode == 0 else "not found"
+    except Exception:
+        data["system"]["npm"] = "not found"
+
+    for port in [8787, 4096, 11434]:
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(2)
+            r = s.connect_ex(("127.0.0.1", port))
+            data["services"][f"port_{port}"] = "open" if r == 0 else "closed"
+            s.close()
+        except Exception:
+            data["services"][f"port_{port}"] = "error"
+
+    if project_path:
+        pp = os.path.abspath(os.path.expanduser(project_path))
+        err = validate_project_path_fast(pp)
+        if err:
+            data["project"] = {"error": err}
+        else:
+            data["project"] = {
+                "path": pp,
+                "name": os.path.basename(pp),
+                "dir_exists": os.path.isdir(pp),
+            }
+            snapshots = list_run_snapshots(pp)
+            data["snapshots"] = [s.get("run_id", "") for s in snapshots[:5]]
+
+    data = mask_dict(data)
+    return data
 
 RUNS_DIR_NAME = ".sompter/runs"
 SUSPICIOUS_RUN_FILES = [".env", "auth.json", "password", "api_key"]
@@ -1031,7 +1125,7 @@ def get_run_detail(project_path: str, run_id: str) -> dict | None:
                    "opencode-output.txt", "after-status.txt", "after-diff.patch"]:
         content = read_run_file(snapshot_dir, fname)
         if content is not None:
-            key = fname.replace(".", "_")
+            key = fname.replace(".", "_").replace("-", "_")
             detail[key] = content[:5000] if len(content) > 5000 else content
     return detail
 
