@@ -215,3 +215,66 @@ Requires a saved project profile. Works with or without an active OpenCode serve
 
 - `app/` — Electron frontend (main, renderer, HTML, CSS)
 - `backend/` — FastAPI Python server
+
+## Menu Bar App
+
+Sompter AI lives in your macOS menu bar for quick access.
+
+### Menu Bar Icon
+
+- A purple **S** icon appears in the menu bar when Sompter is running
+- **Click** the icon to toggle the sidebar show/hide
+- **Right-click** for the context menu
+
+### Context Menu
+
+| Menu Item | Action |
+|-----------|--------|
+| **Show/Hide Sidebar** | Toggle the floating sidebar |
+| **Smart Fix** | Opens sidebar and runs Smart Fix (requires a project profile) |
+| **Open Setup** | Opens the Setup panel |
+| **Open Services** | Opens the Service Controls panel |
+| **Open Diagnostics** | Opens the Diagnostics panel |
+| **Backend ● / Ollama ● / OpenCode ●** | Live status readout (disabled) |
+| **Restart Services** | Confirms and restarts all services |
+| **Quit Sompter AI** | Exits the app entirely |
+
+### Status Tooltip
+
+Hover over the menu bar icon to see live status:
+```
+Sompter AI — Backend: OK | Ollama: OK | OpenCode: OFF
+```
+
+Status refreshes every 10 seconds.
+
+### Global Shortcut
+
+**Cmd+Shift+A** toggles the sidebar between collapsed and expanded mode — always works, even when the window is hidden.
+
+### Native Notifications
+
+Sompter sends macOS native notifications for:
+- **Smart Fix** — When a Smart Fix run completes or fails
+- **OpenCode** — When an OpenCode run completes
+- **Diagnostics** — When a diagnostics report is saved
+- **Service offline** — When Backend, Ollama, or OpenCode goes down
+
+Notifications are rate-limited to avoid spam (30s cooldown per service).
+
+### Dock Icon
+
+By default, Sompter hides from the Dock (accessible only from the menu bar and **Cmd+Shift+A**). To show in the Dock:
+
+1. Click **⚙ Setup**
+2. Check **Show in Dock**
+3. The app will appear in your Dock immediately
+
+You can also disable notifications from the Setup panel.
+
+### Quitting
+
+- **Menu bar > Right-click > Quit Sompter AI**
+- Or run `npm run stop` from the terminal
+
+## Architecture

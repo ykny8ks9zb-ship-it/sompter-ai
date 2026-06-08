@@ -1,15 +1,191 @@
-const { app, BrowserWindow, ipcMain, screen, globalShortcut, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, dialog, Tray, Menu, Notification, nativeImage } = require('electron');
 const path = require('path');
 const { execFile } = require('child_process');
 const fs = require('fs');
 
 let mainWindow;
 let isSnapping = false;
+let tray = null;
+let trayPollInterval = null;
+
+const TRAY_ICON_B64 = 'iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAfklEQVR4nGNgGHagO+abMhDHAXE1FIPYypQY6ADEO4D4Pw4MknMg1dBqPAai42paGEqc4VDvk2ooDOMOFgJhSgjvwGWoMgWGwjBmaoEmI0oNjqNWpBGORFoaTLOgoE3k0Sy5QQ2mTQahIBJpUl4QZyhasFC32ESzgLoF/aAFAMRAv8cGk8OxAAAAAElFTkSuQmCC';
 
 const COLLAPSED_W = 56;
 const COLLAPSED_H = 120;
 const EXPANDED_W = 380;
 const EXPANDED_H = 680;
+
+// ---- Menu bar / Notification helpers ----
+
+function getMenuBarPrefs() {
+  const prefsPath = path.join(app.getPath('userData'), 'sompter-menu-bar-prefs.json');
+  try {
+    return JSON.parse(fs.readFileSync(prefsPath, 'utf-8'));
+  } catch {
+    return { enableNotifications: true, showInDock: false };
+  }
+}
+
+function saveMenuBarPrefs(prefs) {
+  const prefsPath = path.join(app.getPath('userData'), 'sompter-menu-bar-prefs.json');
+  fs.mkdirSync(path.dirname(prefsPath), { recursive: true });
+  fs.writeFileSync(prefsPath, JSON.stringify(prefs, null, 2));
+}
+
+function sendNotification(title, body) {
+  try {
+    const prefs = getMenuBarPrefs();
+    if (!prefs.enableNotifications) return;
+  } catch { return; }
+  if (Notification.isSupported()) {
+    const n = new Notification({ title, body });
+    n.show();
+  }
+}
+
+function createTrayIcon() {
+  const img = nativeImage.createFromBuffer(Buffer.from(TRAY_ICON_B64, 'base64'));
+  if (process.platform === 'darwin') img.setTemplateImage(true);
+  return img;
+}
+
+function toggleSidebar() {
+  if (!mainWindow) return;
+  if (mainWindow.isVisible()) {
+    mainWindow.hide();
+  } else {
+    mainWindow.show();
+  }
+}
+
+function updateTrayMenu(health) {
+  const isVisible = mainWindow && mainWindow.isVisible();
+  const h = health || { backend: false, ollama: false, opencode: false };
+  const backendOk = h.backend ? '●' : '○';
+  const ollamaOk = h.ollama ? '●' : '○';
+  const opencodeOk = h.opencode ? '●' : '○';
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: isVisible ? 'Hide Sidebar' : 'Show Sidebar',
+      click: toggleSidebar,
+    },
+    { type: 'separator' },
+    {
+      label: 'Smart Fix',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.webContents.send('menu-action', 'smartfix');
+        }
+      },
+    },
+    {
+      label: 'Open Setup',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.webContents.send('menu-action', 'setup');
+        }
+      },
+    },
+    {
+      label: 'Open Services',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.webContents.send('menu-action', 'services');
+        }
+      },
+    },
+    {
+      label: 'Open Diagnostics',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.webContents.send('menu-action', 'diagnostics');
+        }
+      },
+    },
+    { type: 'separator' },
+    { label: `Backend ${backendOk}   Ollama ${ollamaOk}   OpenCode ${opencodeOk}`, enabled: false },
+    { type: 'separator' },
+    {
+      label: 'Restart Services',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.webContents.send('menu-action', 'restart-services');
+        }
+      },
+    },
+    { type: 'separator' },
+    { label: 'Quit Sompter AI', click: () => { app.quit(); } },
+  ]);
+  tray.setContextMenu(contextMenu);
+}
+
+async function fetchHealth() {
+  try {
+    const r = await fetch('http://localhost:8787/api/health');
+    return await r.json();
+  } catch {
+    return { backend: false, ollama: false, opencode: false };
+  }
+}
+
+function updateTrayTooltip(health) {
+  const h = health || { backend: false, ollama: false, opencode: false };
+  const parts = [];
+  parts.push(h.backend ? 'Backend: OK' : 'Backend: OFF');
+  parts.push(h.ollama ? 'Ollama: OK' : 'Ollama: OFF');
+  parts.push(h.opencode ? 'OpenCode: OK' : 'OpenCode: OFF');
+  tray.setToolTip('Sompter AI — ' + parts.join(' | '));
+}
+
+async function refreshTrayState() {
+  const health = await fetchHealth();
+  updateTrayMenu(health);
+  updateTrayTooltip(health);
+  checkAndNotifyServiceChange(health);
+}
+
+function startTrayPolling() {
+  if (trayPollInterval) clearInterval(trayPollInterval);
+  refreshTrayState();
+  trayPollInterval = setInterval(refreshTrayState, 10000);
+}
+
+function createTray() {
+  tray = new Tray(createTrayIcon());
+  tray.setToolTip('Sompter AI — Starting...');
+  updateTrayMenu({ backend: false, ollama: false, opencode: false });
+  tray.on('click', toggleSidebar);
+  startTrayPolling();
+}
+
+// Previous notification states to avoid spam
+let prevNotifStates = {};
+
+function checkAndNotifyServiceChange(health) {
+  const prefs = getMenuBarPrefs();
+  if (!prefs.enableNotifications) return;
+  const now = Date.now();
+  const cooldown = 30000; // 30s between same notification
+
+  ['backend', 'ollama', 'opencode'].forEach(svc => {
+    const key = svc + '_offline';
+    const wasOff = prevNotifStates[key] || false;
+    const isOff = !health[svc];
+    if (isOff && !wasOff) {
+      const last = prevNotifStates[key + '_last'] || 0;
+      if (now - last > cooldown) {
+        sendNotification('Sompter AI', `${svc.charAt(0).toUpperCase() + svc.slice(1)} went offline`);
+        prevNotifStates[key + '_last'] = now;
+      }
+    }
+    prevNotifStates[key] = isOff;
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -51,10 +227,20 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  createTray();
+
+  const prefs = getMenuBarPrefs();
+  if (!prefs.showInDock) {
+    if (app.dock && app.dock.hide) app.dock.hide();
+  }
+});
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+  if (trayPollInterval) clearInterval(trayPollInterval);
+  if (tray) tray.destroy();
 });
 
 app.on('window-all-closed', () => {
@@ -427,5 +613,28 @@ ipcMain.handle('openLogsFolder', async () => {
   } catch (err) {
     return { success: false, message: `Error: ${err.message}` };
   }
+});
+
+// ---- Menu Bar / Dock / Notification IPC ----
+
+ipcMain.handle('getMenuBarPrefs', async () => {
+  return getMenuBarPrefs();
+});
+
+ipcMain.handle('saveMenuBarPrefs', async (_event, prefs) => {
+  saveMenuBarPrefs(prefs);
+  if (prefs.hasOwnProperty('showInDock')) {
+    if (prefs.showInDock) {
+      if (app.dock && app.dock.show) app.dock.show();
+    } else {
+      if (app.dock && app.dock.hide) app.dock.hide();
+    }
+  }
+  return { success: true };
+});
+
+ipcMain.handle('showNotification', async (_event, { title, body }) => {
+  sendNotification(title, body);
+  return { success: true };
 });
 

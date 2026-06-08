@@ -135,6 +135,17 @@
         <button class="setup-btn" id="setup-open-folder-btn">📂 Open Project</button>
       </div>
 
+      <div id="setup-menu-bar-options">
+        <label class="setup-toggle">
+          <input type="checkbox" id="setup-enable-notifications" checked />
+          <span>Enable Notifications</span>
+        </label>
+        <label class="setup-toggle">
+          <input type="checkbox" id="setup-show-in-dock" />
+          <span>Show in Dock</span>
+        </label>
+      </div>
+
       <div id="setup-result" class="hidden"></div>
     </div>
 
@@ -435,6 +446,32 @@
         st.collapsed = true;
         writeState(st);
         await window.electronAPI.collapseWindow(st.y);
+      }
+    });
+
+    // ---- Menu action listener (from tray) ----
+    window.electronAPI.onMenuAction(async (action) => {
+      if (action === 'smartfix') {
+        await runSmartFix();
+      } else if (action === 'setup') {
+        setupVisible = true;
+        setupPanel.classList.remove('hidden');
+        setupResult.classList.add('hidden');
+        await refreshSetupStatus();
+      } else if (action === 'services') {
+        servicesVisible = true;
+        servicesPanel.classList.remove('hidden');
+        servicesResult.classList.add('hidden');
+        await updateServiceStatus();
+      } else if (action === 'diagnostics') {
+        diagnosticsVisible = true;
+        diagnosticsPanel.classList.remove('hidden');
+        diagnosticsResult.classList.add('hidden');
+        await refreshDiagnostics();
+      } else if (action === 'restart-services') {
+        if (confirm('Restart ALL services (Ollama, OpenCode, Backend)?')) {
+          await runServiceAction('restart_all');
+        }
       }
     });
 
@@ -941,6 +978,7 @@
           opencodeOutputText.textContent = result.output || '(no output)';
           addMessage('assistant', `OpenCode completed:\n${(result.output || '').slice(0, 500)}`);
           addHistoryEntry('opencode', promptText, (result.output || '').slice(0, 500), 'success');
+          window.electronAPI.showNotification('OpenCode', 'OpenCode run completed');
         } else {
           opencodeStatusText.textContent = 'OpenCode Error';
           opencodeStatusText.className = 'opencode-status-error';
@@ -1004,12 +1042,14 @@
           opencodeOutputText.textContent = outputText;
           addMessage('assistant', `Smart Fix completed:\n${outputText.slice(0, 500)}`);
           addHistoryEntry('opencode', 'Smart Fix: ' + (result.screen_summary || ''), outputText.slice(0, 500), 'success');
+          window.electronAPI.showNotification('Smart Fix', 'Smart Fix completed successfully');
         } else {
           opencodeStatusText.textContent = 'Smart Fix Error';
           opencodeStatusText.className = 'opencode-status-error';
           opencodeOutputText.textContent = outputText;
           addMessage('assistant', `Smart Fix failed:\n${outputText.slice(0, 500)}`);
           addHistoryEntry('opencode', 'Smart Fix: ' + (result.screen_summary || ''), outputText, 'failed');
+          window.electronAPI.showNotification('Smart Fix', 'Smart Fix encountered an error');
         }
       } catch (err) {
         opencodeStatusText.textContent = 'Smart Fix Error';
@@ -1019,6 +1059,7 @@
         addMessage('assistant', `Error: ${err.message}`);
         opencodeReview.classList.remove('hidden');
         addHistoryEntry('opencode', 'Smart Fix', err.message, 'failed');
+        window.electronAPI.showNotification('Smart Fix', 'Smart Fix error: ' + err.message);
       }
     }
 
@@ -1504,6 +1545,30 @@
     const setupResult = $('#setup-result');
     let setupVisible = false;
 
+    async function loadMenuBarPrefs() {
+      try {
+        const prefs = await window.electronAPI.getMenuBarPrefs();
+        $('#setup-enable-notifications').checked = prefs.enableNotifications !== false;
+        $('#setup-show-in-dock').checked = prefs.showInDock === true;
+      } catch { }
+    }
+
+    async function saveMenuBarPrefsField(key, value) {
+      try {
+        const prefs = await window.electronAPI.getMenuBarPrefs();
+        prefs[key] = value;
+        await window.electronAPI.saveMenuBarPrefs(prefs);
+      } catch { }
+    }
+
+    $('#setup-enable-notifications').addEventListener('change', (e) => {
+      saveMenuBarPrefsField('enableNotifications', e.target.checked);
+    });
+
+    $('#setup-show-in-dock').addEventListener('change', (e) => {
+      saveMenuBarPrefsField('showInDock', e.target.checked);
+    });
+
     function setSetupDot(id, ok) {
       const el = $(`#${id}`);
       if (el) el.className = 'setup-indicator ' + (ok ? 'setup-ok' : 'setup-fail');
@@ -1561,6 +1626,7 @@
       setupPanel.classList.toggle('hidden', !setupVisible);
       if (setupVisible) {
         setupResult.classList.add('hidden');
+        await loadMenuBarPrefs();
         await refreshSetupStatus();
       }
     }
@@ -1721,6 +1787,7 @@
         const result = await window.electronAPI.saveDiagnosticsReport(projectPath || '', reportData);
         if (result.success) {
           showDiagnosticsResult(true, `Saved: ${result.path}`);
+          window.electronAPI.showNotification('Diagnostics', 'Diagnostics report saved');
         } else {
           showDiagnosticsResult(false, result.error || 'Save failed');
         }
