@@ -263,6 +263,23 @@ def call_openai(prompt: str, screenshot_b64: str | None, search_web: bool, syste
 
 
 def call_ai(screenshot_b64: str, prompt: str, system_override: str | None = None, search_web: bool = False) -> str:
+    settings = load_settings()
+    mode = settings.get("mode", "auto")
+
+    if mode == "ollama":
+        if not ollama_available():
+            raise Exception("Ollama is selected but not running. Start it with: ollama serve")
+        return call_ollama(prompt, screenshot_b64, search_web, system_override)
+    elif mode == "gemini":
+        if not gemini_api_key:
+            raise Exception("Gemini is selected but no API key is set. Add your key in Models settings.")
+        return call_gemini(prompt, screenshot_b64, search_web, system_override)
+    elif mode == "openai":
+        if not openai_api_key:
+            raise Exception("OpenAI is selected but no API key is set. Add your key in Models settings.")
+        return call_openai(prompt, screenshot_b64, search_web, system_override)
+
+    # Auto mode: Ollama > Gemini > OpenAI
     if ollama_available():
         return call_ollama(prompt, screenshot_b64, search_web, system_override)
     elif gemini_api_key:
@@ -374,10 +391,12 @@ async def control_plan(req: PlanRequest):
 
 @app.get("/api/providers")
 async def check_providers():
+    settings = load_settings()
     return {
-        "ollama": {"available": ollama_available(), "model": ollama_model},
-        "gemini": {"available": bool(gemini_api_key), "model": gemini_model},
-        "openai": {"available": bool(openai_api_key), "model": openai_model},
+        "ollama": {"available": ollama_available(), "model": settings.get("ollama_model", ollama_model)},
+        "gemini": {"available": bool(gemini_api_key), "model": settings.get("gemini_model", gemini_model)},
+        "openai": {"available": bool(openai_api_key), "model": settings.get("openai_model", openai_model)},
+        "mode": settings.get("mode", "auto"),
     }
 
 
@@ -385,12 +404,20 @@ async def check_providers():
 async def health():
     oa = ollama_available()
     oc = find_opencode_server()
+    settings = load_settings()
+    mode = settings.get("mode", "auto")
     provider = "ollama" if oa else "gemini" if gemini_api_key else "openai" if openai_api_key else "none"
     return {
         "backend": True,
         "ollama": oa,
         "opencode": oc is not None,
         "provider": provider,
+        "mode": mode,
+        "ollama_model": settings.get("ollama_model", ollama_model),
+        "gemini_model": settings.get("gemini_model", gemini_model),
+        "openai_model": settings.get("openai_model", openai_model),
+        "gemini_available": bool(gemini_api_key),
+        "openai_available": bool(openai_api_key),
     }
 
 
@@ -923,7 +950,177 @@ def validate_project_path_fast(path: str) -> str | None:
     return None
 
 
-# ---- Diagnostics / Bug Report ----
+# ---- Provider Settings ----
+
+SOMPTER_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".sompter")
+SETTINGS_PATH = os.path.join(SOMPTER_DIR, "settings.json")
+DOTENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+
+DEFAULT_SETTINGS = {
+    "mode": "auto",
+    "ollama_model": "gemma3:12b",
+    "gemini_model": "gemini-2.0-flash",
+    "openai_model": "gpt-4o-mini",
+}
+
+
+def load_settings() -> dict:
+    if os.path.isfile(SETTINGS_PATH):
+        try:
+            with open(SETTINGS_PATH) as f:
+                return {**DEFAULT_SETTINGS, **json.load(f)}
+        except Exception:
+            pass
+    return dict(DEFAULT_SETTINGS)
+
+
+def save_settings(data: dict):
+    os.makedirs(SOMPTER_DIR, exist_ok=True)
+    existing = load_settings()
+    existing.update(data)
+    with open(SETTINGS_PATH, "w") as f:
+        json.dump(existing, f, indent=2)
+
+
+def refresh_env():
+    load_dotenv(override=True)
+    global ollama_model, gemini_api_key, gemini_api_key_raw, gemini_model, openai_api_key, openai_api_key_raw, openai_model
+    ollama_model = os.getenv("OLLAMA_MODEL", "gemma3:12b")
+    gemini_api_key_raw = os.getenv("GEMINI_API_KEY", "")
+    gemini_api_key = gemini_api_key_raw if gemini_api_key_raw and gemini_api_key_raw != "put_your_gemini_api_key_here" else ""
+    gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+    openai_api_key_raw = os.getenv("OPENAI_API_KEY", "")
+    openai_api_key = openai_api_key_raw if openai_api_key_raw and openai_api_key_raw != "put_your_openai_api_key_here" else ""
+    openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+
+def mask_key(key: str) -> str:
+    if not key or len(key) < 8:
+        return key
+    return key[:4] + "..." + key[-4:]
+
+
+def write_env_key(key_name: str, value: str) -> tuple[bool, str]:
+    try:
+        lines = []
+        found = False
+        if os.path.isfile(DOTENV_PATH):
+            with open(DOTENV_PATH) as f:
+                lines = f.readlines()
+
+        with open(DOTENV_PATH, "w") as f:
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith(key_name + "=") or stripped.startswith("# " + key_name + "="):
+                    continue
+                if stripped.startswith("#") or stripped == "":
+                    f.write(line)
+                    continue
+                f.write(line)
+            f.write(f'{key_name}="{value}"\n')
+        return True, "Saved"
+    except Exception as e:
+        return False, str(e)
+
+
+@app.get("/api/settings")
+async def settings_get():
+    s = load_settings()
+    refresh_env()
+    return {
+        "mode": s.get("mode", "auto"),
+        "ollama_model": s.get("ollama_model", ollama_model),
+        "gemini_model": s.get("gemini_model", gemini_model),
+        "openai_model": s.get("openai_model", openai_model),
+        "ollama_available": ollama_available(),
+        "gemini_available": bool(gemini_api_key),
+        "openai_available": bool(openai_api_key),
+        "gemini_key_masked": mask_key(gemini_api_key) if gemini_api_key else "",
+        "openai_key_masked": mask_key(openai_api_key) if openai_api_key else "",
+        "active_provider": "ollama" if ollama_available() else "gemini" if gemini_api_key else "openai" if openai_api_key else "none",
+    }
+
+
+class SettingsSaveRequest(BaseModel):
+    mode: str = "auto"
+    ollama_model: str | None = None
+    gemini_model: str | None = None
+    openai_model: str | None = None
+    gemini_key: str | None = None
+    openai_key: str | None = None
+
+
+@app.post("/api/settings")
+async def settings_save(req: SettingsSaveRequest):
+    try:
+        non_secret = {}
+        if req.mode in ("auto", "ollama", "gemini", "openai"):
+            non_secret["mode"] = req.mode
+        if req.ollama_model:
+            non_secret["ollama_model"] = req.ollama_model
+        if req.gemini_model:
+            non_secret["gemini_model"] = req.gemini_model
+        if req.openai_model:
+            non_secret["openai_model"] = req.openai_model
+        save_settings(non_secret)
+
+        if req.gemini_key:
+            ok, msg = write_env_key("GEMINI_API_KEY", req.gemini_key)
+            if not ok:
+                return {"success": False, "message": f"Failed to save Gemini key: {msg}"}
+        if req.openai_key:
+            ok, msg = write_env_key("OPENAI_API_KEY", req.openai_key)
+            if not ok:
+                return {"success": False, "message": f"Failed to save OpenAI key: {msg}"}
+
+        refresh_env()
+        return {"success": True, "message": "Settings saved"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+class TestProviderRequest(BaseModel):
+    provider: str
+
+
+@app.post("/api/settings/test_provider")
+async def settings_test_provider(req: TestProviderRequest):
+    refresh_env()
+    try:
+        if req.provider == "ollama":
+            if ollama_available():
+                resp = requests.post(
+                    "http://localhost:11434/api/generate",
+                    json={"model": ollama_model, "prompt": "say ok", "stream": False},
+                    timeout=30,
+                )
+                if resp.status_code == 200:
+                    return {"success": True, "message": f"Ollama {ollama_model} responds OK"}
+                return {"success": False, "message": f"Ollama returned status {resp.status_code}"}
+            return {"success": False, "message": "Ollama is not running (port 11434)"}
+        elif req.provider == "gemini":
+            if not gemini_api_key:
+                return {"success": False, "message": "No Gemini API key set"}
+            import google.genai as genai
+            client = genai.Client(api_key=gemini_api_key)
+            resp = client.models.generate_content(model=gemini_model, contents="say ok")
+            if resp and resp.text:
+                return {"success": True, "message": f"Gemini {gemini_model} responds OK"}
+            return {"success": False, "message": "Gemini returned empty response"}
+        elif req.provider == "openai":
+            if not openai_api_key:
+                return {"success": False, "message": "No OpenAI API key set"}
+            from openai import OpenAI
+            client = OpenAI(api_key=openai_api_key)
+            resp = client.chat.completions.create(
+                model=openai_model, messages=[{"role": "user", "content": "say ok"}]
+            )
+            if resp and resp.choices:
+                return {"success": True, "message": f"OpenAI {openai_model} responds OK"}
+            return {"success": False, "message": "OpenAI returned empty response"}
+        return {"success": False, "message": f"Unknown provider: {req.provider}"}
+    except Exception as e:
+        return {"success": False, "message": f"{req.provider} test failed: {str(e)}"}
 
 SECRET_PATTERNS = [
     re.compile(r"sk-[a-zA-Z0-9]{20,}"),

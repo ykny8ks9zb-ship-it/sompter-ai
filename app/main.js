@@ -350,3 +350,52 @@ ipcMain.handle('runsUndo', async (_event, { projectPath, runId }) => {
   }
 });
 
+ipcMain.handle('getSettings', async () => {
+  try {
+    const r = await fetch(`${BACKEND}/api/settings`);
+    return await r.json();
+  } catch (err) {
+    return { success: false, error: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('saveSettings', async (_event, data) => {
+  try {
+    const r = await fetch(`${BACKEND}/api/settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    return await r.json();
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('testProvider', async (_event, { provider }) => {
+  try {
+    const r = await fetch(`${BACKEND}/api/settings/test_provider`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider }),
+    });
+    return await r.json();
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('openEnvFile', async () => {
+  try {
+    const envPath = path.join(__dirname, '..', '.env');
+    if (fs.existsSync(envPath)) {
+      const { shell } = require('electron');
+      shell.openPath(envPath);
+      return { success: true };
+    }
+    return { success: false, message: '.env not found' };
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+

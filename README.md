@@ -98,26 +98,67 @@ npm run dev
 
 ## AI Providers
 
-The backend auto-detects which provider to use (tried in order):
+You can choose which AI provider to use from the **🧠 Models** panel in the sidebar.
 
-### 1. Ollama (free, local, no API key)
+### Modes
+
+| Mode | Behavior |
+|------|----------|
+| **Auto** (default) | Tries Ollama first, falls back to Gemini, then OpenAI |
+| **Ollama only** | Uses only local Ollama. Free, private, no API key needed. |
+| **Gemini only** | Uses only Google Gemini. Free tier available with API key. |
+| **OpenAI only** | Uses only OpenAI. Requires API credits (separate from ChatGPT Plus). |
+
+### Provider Setup
+
+**Ollama (free, local, no API key)**
 ```bash
 brew install ollama
 ollama serve                    # start the server
-ollama pull gemma3:12b         # pull a vision model
+ollama pull gemma3:12b         # pull a vision model (default)
 ```
+Ollama runs 100% locally — no data leaves your machine.
 
-### 2. Google Gemini (free tier)
-Get a key at https://aistudio.google.com/apikey, then set in `.env`:
-```
-GEMINI_API_KEY=your_key_here
-```
+**Google Gemini (free tier)**
+1. Get a key at https://aistudio.google.com/apikey
+2. Open the **🧠 Models** panel
+3. Enter your key in the Gemini Key field
+4. Click **Save Settings**
+5. Set mode to **Gemini only** or stay on **Auto**
 
-### 3. OpenAI (paid)
-Set in `.env`:
-```
-OPENAI_API_KEY=sk-...
-```
+**OpenAI (paid)**
+1. Get a key at https://platform.openai.com/api-keys
+2. Open the **🧠 Models** panel
+3. Enter your key in the OpenAI Key field
+4. Click **Save Settings**
+5. Set mode to **OpenAI only** or stay on **Auto**
+
+> **Note:** ChatGPT Plus subscription does **not** include API credits. You need a separate OpenAI API account with billing enabled.
+
+### Key Safety
+
+- API keys are stored **only** in `.env` — never in localStorage, history, or diagnostics
+- Keys are always masked in the UI (e.g. `sk-...abcd`)
+- The Diagnostics report never includes full keys
+- Changing providers takes effect immediately after saving
+
+### Changing Models
+
+Each provider has a text field for the model name:
+- **Ollama:** `gemma3:12b`, `llama3.2:3b`, `llama3.2-vision:11b`, etc.
+- **Gemini:** `gemini-2.0-flash`, `gemini-1.5-pro`, `gemini-1.5-flash`, etc.
+- **OpenAI:** `gpt-4o-mini`, `gpt-4o`, `gpt-4-turbo`, etc.
+- **OpenCode:** `llama3.2:3b` (tool-calling model — change only if you know the new model supports tool calling)
+
+### Provider Status
+
+The footer shows the current mode (Auto, Ollama, Gemini, OpenAI) and the active provider. The **🧠 Models** panel shows live health status for each provider and lets you test connectivity.
+
+### Troubleshooting
+
+- **"Selected provider is offline"** — Ensure Ollama is running (`ollama serve`) or the API key is correct
+- **"Key is masked"** — Full keys are never shown after saving; click **Open .env** to verify or edit directly
+- **Model not found** — Check the model name is installed (Ollama: `ollama list`) or available in the provider's API
 
 ## Custom Prompt Buttons
 

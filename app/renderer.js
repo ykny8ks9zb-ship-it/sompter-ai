@@ -48,6 +48,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDiagnostics: (projectPath) => ipcRenderer.invoke('getDiagnostics', { projectPath }),
   saveDiagnosticsReport: (projectPath, data) => ipcRenderer.invoke('saveDiagnosticsReport', { projectPath, data }),
 
+  // Provider Settings
+  getSettings: () => ipcRenderer.invoke('getSettings'),
+  saveSettings: (data) => ipcRenderer.invoke('saveSettings', data),
+  testProvider: (provider) => ipcRenderer.invoke('testProvider', { provider }),
+  openEnvFile: () => ipcRenderer.invoke('openEnvFile'),
+
   // Global toggle
   onGlobalToggle: (callback) => {
     ipcRenderer.on('global-toggle', () => callback());

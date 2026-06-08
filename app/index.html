@@ -35,6 +35,7 @@
       <div id="preset-actions">
         <button class="preset-action-btn setup-btn" id="prompts-edit-btn">✏️ Prompts</button>
         <button class="preset-action-btn setup-btn" id="history-btn">🕘 History</button>
+        <button class="preset-action-btn setup-btn" id="models-btn">🧠 Models</button>
         <button class="preset-action-btn setup-btn" id="diagnostics-btn">🔬 Diag</button>
         <button class="preset-action-btn setup-btn" id="setup-btn">⚙ Setup</button>
       </div>
@@ -134,6 +135,76 @@
       </div>
 
       <div id="setup-result" class="hidden"></div>
+    </div>
+
+    <div id="models-panel" class="hidden">
+      <div id="models-header">
+        <span>Provider &amp; Model Settings</span>
+        <button id="models-close-btn" class="small-btn">✕</button>
+      </div>
+      <div id="models-content">
+        <div class="models-section">
+          <div class="models-label">Active Mode</div>
+          <div id="models-mode-buttons">
+            <label class="models-mode-option"><input type="radio" name="mode" value="auto" checked /> Auto</label>
+            <label class="models-mode-option"><input type="radio" name="mode" value="ollama" /> Ollama only</label>
+            <label class="models-mode-option"><input type="radio" name="mode" value="gemini" /> Gemini only</label>
+            <label class="models-mode-option"><input type="radio" name="mode" value="openai" /> OpenAI only</label>
+          </div>
+        </div>
+
+        <div class="models-section">
+          <div class="models-label">Ollama</div>
+          <div class="field-row">
+            <label>Model:</label>
+            <input type="text" id="models-ollama-model" class="action-param" placeholder="gemma3:12b" />
+          </div>
+          <div class="models-status" id="models-ollama-status"></div>
+        </div>
+
+        <div class="models-section">
+          <div class="models-label">Gemini</div>
+          <div class="field-row">
+            <label>Model:</label>
+            <input type="text" id="models-gemini-model" class="action-param" placeholder="gemini-2.0-flash" />
+          </div>
+          <div class="field-row">
+            <label>Key:</label>
+            <input type="password" id="models-gemini-key" class="action-param" placeholder="Enter API key" />
+          </div>
+          <div class="models-status" id="models-gemini-status"></div>
+        </div>
+
+        <div class="models-section">
+          <div class="models-label">OpenAI</div>
+          <div class="field-row">
+            <label>Model:</label>
+            <input type="text" id="models-openai-model" class="action-param" placeholder="gpt-4o-mini" />
+          </div>
+          <div class="field-row">
+            <label>Key:</label>
+            <input type="password" id="models-openai-key" class="action-param" placeholder="Enter API key" />
+          </div>
+          <div class="models-status" id="models-openai-status"></div>
+        </div>
+
+        <div class="models-section">
+          <div class="models-label">OpenCode</div>
+          <div class="field-row">
+            <label>Model:</label>
+            <input type="text" id="models-opencode-model" class="action-param" placeholder="llama3.2:3b" />
+          </div>
+          <div class="field-note">Tool-calling model required for OpenCode edits. llama3.2:3b is the safe default.</div>
+        </div>
+      </div>
+
+      <div id="models-buttons">
+        <button id="models-save-btn" class="setup-btn">💾 Save Settings</button>
+        <button id="models-test-btn" class="setup-btn">🧪 Test Provider</button>
+        <button id="models-auto-btn" class="setup-btn">↺ Reset to Auto</button>
+        <button id="models-env-btn" class="setup-btn">📂 Open .env</button>
+      </div>
+      <div id="models-result" class="hidden"></div>
     </div>
 
     <div id="diagnostics-panel" class="hidden">
@@ -250,6 +321,7 @@
       <span class="footer-item" id="footer-backend"><span class="health-dot" id="dot-backend"></span>Backend</span>
       <span class="footer-item" id="footer-ollama"><span class="health-dot" id="dot-ollama"></span>Ollama</span>
       <span class="footer-item" id="footer-opencode"><span class="health-dot" id="dot-opencode"></span>OpenCode</span>
+      <span class="footer-mode" id="footer-mode"></span>
       <span class="footer-provider" id="footer-provider"></span>
     </div>
   </div>
@@ -330,6 +402,7 @@
     const dotBackend = $('#dot-backend');
     const dotOllama = $('#dot-ollama');
     const dotOpencode = $('#dot-opencode');
+    const footerMode = $('#footer-mode');
     const footerProvider = $('#footer-provider');
 
     function setDot(el, ok) {
@@ -343,11 +416,13 @@
         setDot(dotOllama, h.ollama);
         setDot(dotOpencode, h.opencode);
         footerProvider.textContent = h.provider || '';
+        footerMode.textContent = h.mode ? (h.mode.charAt(0).toUpperCase() + h.mode.slice(1)) : '';
       } catch {
         setDot(dotBackend, false);
         setDot(dotOllama, false);
         setDot(dotOpencode, false);
         footerProvider.textContent = '';
+        footerMode.textContent = '';
       }
     }
 
@@ -1630,6 +1705,135 @@
     $('#diagnostics-refresh-btn').addEventListener('click', refreshDiagnostics);
     $('#diagnostics-copy-btn').addEventListener('click', copyDiagnostics);
     $('#diagnostics-save-btn').addEventListener('click', saveDiagnostics);
+
+    // ---- Models / Provider Settings Panel ----
+    const modelsPanel = $('#models-panel');
+    const modelsResult = $('#models-result');
+    let modelsVisible = false;
+
+    function showModelsResult(ok, msg) {
+      modelsResult.classList.remove('hidden');
+      modelsResult.className = ok ? 'setup-result-ok' : 'setup-result-fail';
+      modelsResult.textContent = msg;
+      setTimeout(() => modelsResult.classList.add('hidden'), 5000);
+    }
+
+    function setModelsStatus(id, ok, msg) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.className = 'models-status';
+      if (ok === true) {
+        el.className += ' models-ok';
+        el.textContent = '✅ ' + msg;
+      } else if (ok === false) {
+        el.className += ' models-fail';
+        el.textContent = '⛔ ' + msg;
+      } else {
+        el.className += ' models-idle';
+        el.textContent = msg || '';
+      }
+    }
+
+    async function loadModelsSettings() {
+      try {
+        const s = await window.electronAPI.getSettings();
+        if (s && s.mode) {
+          document.querySelectorAll('input[name="mode"]').forEach(el => {
+            el.checked = el.value === s.mode;
+          });
+        }
+        if (s.ollama_model) $('#models-ollama-model').value = s.ollama_model;
+        if (s.gemini_model) $('#models-gemini-model').value = s.gemini_model;
+        if (s.openai_model) $('#models-openai-model').value = s.openai_model;
+
+        setModelsStatus('models-ollama-status', s.ollama_available, s.ollama_available ? 'Running' : 'Not running (ollama serve)');
+        setModelsStatus('models-gemini-status', s.gemini_available, s.gemini_key_masked ? 'Key set: ' + s.gemini_key_masked : 'No key set');
+        setModelsStatus('models-openai-status', s.openai_available, s.openai_key_masked ? 'Key set: ' + s.openai_key_masked : 'No key set');
+      } catch (err) {
+        showModelsResult(false, 'Failed to load settings: ' + err.message);
+      }
+    }
+
+    async function saveModelsSettings() {
+      const mode = document.querySelector('input[name="mode"]:checked');
+      const data = {
+        mode: mode ? mode.value : 'auto',
+        ollama_model: $('#models-ollama-model').value.trim() || undefined,
+        gemini_model: $('#models-gemini-model').value.trim() || undefined,
+        openai_model: $('#models-openai-model').value.trim() || undefined,
+        gemini_key: $('#models-gemini-key').value.trim() || undefined,
+        openai_key: $('#models-openai-key').value.trim() || undefined,
+      };
+      try {
+        const r = await window.electronAPI.saveSettings(data);
+        if (r.success) {
+          showModelsResult(true, 'Settings saved');
+          $('#models-gemini-key').value = '';
+          $('#models-openai-key').value = '';
+          await loadModelsSettings();
+          pollHealth();
+        } else {
+          showModelsResult(false, r.message || 'Save failed');
+        }
+      } catch (err) {
+        showModelsResult(false, 'Save error: ' + err.message);
+      }
+    }
+
+    async function testCurrentProvider() {
+      const modeRadio = document.querySelector('input[name="mode"]:checked');
+      const provider = modeRadio ? modeRadio.value : 'auto';
+      const testProviders = provider === 'auto' ? ['ollama', 'gemini', 'openai'] : [provider];
+      for (const p of testProviders) {
+        setModelsStatus('models-' + p + '-status', null, 'Testing...');
+      }
+      for (const p of testProviders) {
+        try {
+          const r = await window.electronAPI.testProvider(p);
+          setModelsStatus('models-' + p + '-status', r.success, r.message);
+        } catch (err) {
+          setModelsStatus('models-' + p + '-status', false, err.message);
+        }
+      }
+    }
+
+    async function resetToAuto() {
+      try {
+        const r = await window.electronAPI.saveSettings({ mode: 'auto' });
+        if (r.success) {
+          document.querySelector('input[name="mode"][value="auto"]').checked = true;
+          showModelsResult(true, 'Reset to Auto mode');
+          await loadModelsSettings();
+          pollHealth();
+        } else {
+          showModelsResult(false, r.message || 'Reset failed');
+        }
+      } catch (err) {
+        showModelsResult(false, 'Reset error: ' + err.message);
+      }
+    }
+
+    $('#models-btn').addEventListener('click', () => {
+      modelsVisible = !modelsVisible;
+      modelsPanel.classList.toggle('hidden', !modelsVisible);
+      if (modelsVisible) {
+        modelsResult.classList.add('hidden');
+        loadModelsSettings();
+      }
+    });
+
+    $('#models-close-btn').addEventListener('click', () => {
+      modelsVisible = false;
+      modelsPanel.classList.add('hidden');
+    });
+
+    $('#models-save-btn').addEventListener('click', saveModelsSettings);
+    $('#models-test-btn').addEventListener('click', testCurrentProvider);
+    $('#models-auto-btn').addEventListener('click', resetToAuto);
+    $('#models-env-btn').addEventListener('click', async () => {
+      const r = await window.electronAPI.openEnvFile();
+      if (!r.success) showModelsResult(false, r.message);
+    });
   </script>
 </body>
 </html>
