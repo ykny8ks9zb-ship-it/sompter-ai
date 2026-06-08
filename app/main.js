@@ -99,6 +99,42 @@ ipcMain.handle('getHealth', async () => {
   }
 });
 
+ipcMain.handle('getSetupStatus', async () => {
+  try {
+    const r = await fetch(`${BACKEND}/api/setup/status`);
+    return await r.json();
+  } catch {
+    return { screen_recording: false, accessibility: false, backend: false, ollama: false, opencode: false };
+  }
+});
+
+ipcMain.handle('testScreenshot', async () => {
+  try {
+    const r = await fetch(`${BACKEND}/api/setup/test_screenshot`, { method: 'POST' });
+    return await r.json();
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('testControl', async () => {
+  try {
+    const r = await fetch(`${BACKEND}/api/setup/test_control`, { method: 'POST' });
+    return await r.json();
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('testOpencode', async () => {
+  try {
+    const r = await fetch(`${BACKEND}/api/setup/test_opencode`, { method: 'POST' });
+    return await r.json();
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
 async function takeScreenshot() {
   const p = `/tmp/sompter_screenshot_${Date.now()}.png`;
   await new Promise((resolve, reject) => {
@@ -203,6 +239,18 @@ ipcMain.handle('openFile', async (_event, { filePath }) => {
       execFile('open', [filePath], (err) => (err ? reject(err) : resolve()));
     });
     return { success: true, message: 'Opened' };
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('openPrivacySettings', async (_event, pane) => {
+  const url = `x-apple.systempreferences:com.apple.preference.security?${pane}`;
+  try {
+    await new Promise((resolve, reject) => {
+      execFile('open', [url], (err) => (err ? reject(err) : resolve()));
+    });
+    return { success: true };
   } catch (err) {
     return { success: false, message: `Error: ${err.message}` };
   }
