@@ -399,3 +399,33 @@ ipcMain.handle('openEnvFile', async () => {
   }
 });
 
+ipcMain.handle('getServiceStatus', async () => {
+  try {
+    const r = await fetch(`${BACKEND}/api/services/status`);
+    return await r.json();
+  } catch (err) {
+    return { success: false, error: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('runServiceAction', async (_event, { action }) => {
+  try {
+    const r = await fetch(`${BACKEND}/api/services/${action}`, { method: 'POST' });
+    return await r.json();
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('openLogsFolder', async () => {
+  try {
+    const logsDir = path.join(__dirname, '..', '.sompter', 'logs');
+    fs.mkdirSync(logsDir, { recursive: true });
+    const { shell } = require('electron');
+    shell.openPath(logsDir);
+    return { success: true };
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+

@@ -54,6 +54,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   testProvider: (provider) => ipcRenderer.invoke('testProvider', { provider }),
   openEnvFile: () => ipcRenderer.invoke('openEnvFile'),
 
+  // Service Controls
+  getServiceStatus: () => ipcRenderer.invoke('getServiceStatus'),
+  runServiceAction: (action) => ipcRenderer.invoke('runServiceAction', { action }),
+  openLogsFolder: () => ipcRenderer.invoke('openLogsFolder'),
+
   // Global toggle
   onGlobalToggle: (callback) => {
     ipcRenderer.on('global-toggle', () => callback());

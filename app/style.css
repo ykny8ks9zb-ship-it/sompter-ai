@@ -212,7 +212,7 @@ header {
 
 #preset-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
   gap: 5px;
 }
 
@@ -1392,3 +1392,120 @@ textarea.action-param {
   font-weight: 500;
   font-size: 10px;
 }
+
+/* ---- Services Panel ---- */
+
+#services-panel {
+  border-top: 1px solid #555;
+  padding: 8px;
+  font-size: 12px;
+}
+
+#services-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-weight: 700;
+  color: #e0d0ff;
+  font-size: 13px;
+}
+
+#services-header span {
+  flex: 1;
+}
+
+#services-content {
+  margin-bottom: 8px;
+}
+
+.services-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border-bottom: 1px solid #3a2a4a;
+}
+
+.services-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.services-dot.green { background: #4caf50; box-shadow: 0 0 4px #4caf50; }
+.services-dot.red { background: #f44336; box-shadow: 0 0 4px #f44336; }
+.services-dot.yellow { background: #ff9800; box-shadow: 0 0 4px #ff9800; }
+.services-dot.gray { background: #666; }
+
+.services-name {
+  font-weight: 600;
+  color: #ccc;
+  min-width: 70px;
+}
+
+.services-port {
+  color: #888;
+  font-size: 11px;
+  min-width: 40px;
+}
+
+.services-status {
+  color: #aaa;
+  font-size: 11px;
+  flex: 1;
+  text-align: right;
+}
+
+.services-provider-info {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #888;
+  font-style: italic;
+}
+
+#services-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.services-action-btn {
+  flex: 1;
+  min-width: 60px;
+  font-size: 11px;
+  padding: 4px 6px;
+}
+
+.services-danger {
+  border-color: #b71c1c !important;
+  color: #ef9a9a !important;
+}
+
+.services-danger:hover {
+  background: #b71c1c !important;
+  color: #fff !important;
+}
+
+#services-output {
+  background: #1a1a2e;
+  border: 1px solid #3a2a4a;
+  border-radius: 4px;
+  padding: 6px;
+  margin-bottom: 6px;
+  max-height: 100px;
+  overflow-y: auto;
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 11px;
+}
+
+#services-result {
+  font-size: 11px;
+  padding: 4px 0;
+}
+
+#services-result.success { color: #4caf50; }
+#services-result.error { color: #f44336; }
