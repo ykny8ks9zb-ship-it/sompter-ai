@@ -4,6 +4,7 @@ import json
 import re
 import subprocess
 import socket
+import signal
 import uuid
 import datetime
 import requests
@@ -1382,3 +1383,145 @@ async def runs_undo(req: UndoRequest):
         return {"success": False, "message": "Undo timed out"}
     except Exception as e:
         return {"success": False, "message": str(e)}
+
+
+# ---- Service Controls ----
+
+SERVICE_LOG_DIR = os.path.join(SOMPTER_DIR, "logs")
+SERVICE_LOG_PATH = os.path.join(SERVICE_LOG_DIR, "service-actions.log")
+
+
+def log_service_action(action: str, result: str):
+    os.makedirs(SERVICE_LOG_DIR, exist_ok=True)
+    ts = datetime.datetime.now().isoformat()
+    try:
+        with open(SERVICE_LOG_PATH, "a") as f:
+            f.write(f"[{ts}] {action}: {result}\n")
+    except Exception:
+        pass
+
+
+def is_port_open(port: int, host: str = "127.0.0.1") -> bool:
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(2)
+        r = s.connect_ex((host, port))
+        s.close()
+        return r == 0
+    except Exception:
+        return False
+
+
+@app.get("/api/services/status")
+async def services_status():
+    backend_alive = True
+    try:
+        requests.get("http://127.0.0.1:8787/api/health", timeout=2)
+    except Exception:
+        backend_alive = False
+
+    return {
+        "backend": {"alive": backend_alive, "port": 8787, "port_open": is_port_open(8787)},
+        "ollama": {"alive": ollama_available(), "port": 11434, "port_open": is_port_open(11434)},
+        "opencode": {"alive": find_opencode_server() is not None, "port": 4096, "port_open": is_port_open(4096)},
+        "settings": {
+            "mode": load_settings().get("mode", "auto"),
+            "provider": "ollama" if ollama_available() else "gemini" if gemini_api_key else "openai" if openai_api_key else "none",
+            "ollama_model": ollama_model,
+            "gemini_model": gemini_model,
+            "openai_model": openai_model,
+        },
+    }
+
+
+@app.post("/api/services/restart_ollama")
+async def services_restart_ollama():
+    try:
+        subprocess.run(["pkill", "-f", "ollama serve"], capture_output=True, timeout=5)
+        log_service_action("restart_ollama", "killed existing process")
+        subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log_service_action("restart_ollama", "started ollama serve")
+        return {"success": True, "message": "Ollama restarting. Check status in a few seconds."}
+    except Exception as e:
+        msg = f"Ollama restart failed: {str(e)}"
+        log_service_action("restart_ollama", msg)
+        return {"success": False, "message": msg}
+
+
+@app.post("/api/services/restart_opencode")
+async def services_restart_opencode():
+    try:
+        subprocess.run(["pkill", "-f", "opencode serve"], capture_output=True, timeout=5)
+        log_service_action("restart_opencode", "killed existing process")
+        subprocess.Popen(["opencode", "serve", "--port", "4096"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log_service_action("restart_opencode", "started opencode serve")
+        return {"success": True, "message": "OpenCode restarting. Check status in a few seconds."}
+    except Exception as e:
+        msg = f"OpenCode restart failed: {str(e)}"
+        log_service_action("restart_opencode", msg)
+        return {"success": False, "message": msg}
+
+
+@app.post("/api/services/restart_backend")
+async def services_restart_backend():
+    try:
+        script_path = os.path.join(SOMPTER_DIR, "restart-backend.sh")
+        venv_python = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".venv", "bin", "python3")
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(script_path, "w") as f:
+            f.write("#!/bin/bash\n")
+            f.write("sleep 2\n")
+            f.write(f"pkill -f 'uvicorn backend.server:app' 2>/dev/null\n")
+            f.write(f"cd {project_dir}\n")
+            f.write(f"exec {venv_python} -m uvicorn backend.server:app --port 8787 > /tmp/sompter-backend.log 2>&1 &\n")
+        os.chmod(script_path, 0o755)
+        subprocess.Popen(["bash", script_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        log_service_action("restart_backend", "restart script launched")
+        return {"success": True, "message": "Backend restarting momentarily. If the app disconnects, run npm run dev."}
+    except Exception as e:
+        msg = f"Backend restart failed: {str(e)}"
+        log_service_action("restart_backend", msg)
+        return {"success": False, "message": msg}
+
+
+@app.post("/api/services/restart_all")
+async def services_restart_all():
+    try:
+        subprocess.run(["pkill", "-f", "opencode serve"], capture_output=True, timeout=5)
+        subprocess.run(["pkill", "-f", "ollama serve"], capture_output=True, timeout=5)
+        log_service_action("restart_all", "killed opencode and ollama")
+
+        subprocess.Popen(["opencode", "serve", "--port", "4096"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        script_path = os.path.join(SOMPTER_DIR, "restart-backend.sh")
+        venv_python = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".venv", "bin", "python3")
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(script_path, "w") as f:
+            f.write("#!/bin/bash\n")
+            f.write("sleep 2\n")
+            f.write(f"pkill -f 'uvicorn backend.server:app' 2>/dev/null\n")
+            f.write(f"cd {project_dir}\n")
+            f.write(f"exec {venv_python} -m uvicorn backend.server:app --port 8787 > /tmp/sompter-backend.log 2>&1 &\n")
+        os.chmod(script_path, 0o755)
+        subprocess.Popen(["bash", script_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        log_service_action("restart_all", "restarted opencode, ollama, and backend")
+        return {"success": True, "message": "All services restarting. The backend will reconnect shortly."}
+    except Exception as e:
+        msg = f"Restart all failed: {str(e)}"
+        log_service_action("restart_all", msg)
+        return {"success": False, "message": msg}
+
+
+@app.post("/api/services/stop_all")
+async def services_stop_all():
+    try:
+        subprocess.run(["pkill", "-f", "opencode serve"], capture_output=True, timeout=5)
+        subprocess.run(["pkill", "-f", "uvicorn backend.server:app"], capture_output=True, timeout=5)
+        log_service_action("stop_all", "stopped opencode serve and uvicorn")
+        return {"success": True, "message": "Services stopped. Run npm run dev or npm run start:app to restart."}
+    except Exception as e:
+        msg = f"Stop all failed: {str(e)}"
+        log_service_action("stop_all", msg)
+        return {"success": False, "message": msg}

@@ -36,6 +36,7 @@
         <button class="preset-action-btn setup-btn" id="prompts-edit-btn">✏️ Prompts</button>
         <button class="preset-action-btn setup-btn" id="history-btn">🕘 History</button>
         <button class="preset-action-btn setup-btn" id="models-btn">🧠 Models</button>
+        <button class="preset-action-btn setup-btn" id="services-btn">🛠 Services</button>
         <button class="preset-action-btn setup-btn" id="diagnostics-btn">🔬 Diag</button>
         <button class="preset-action-btn setup-btn" id="setup-btn">⚙ Setup</button>
       </div>
@@ -219,6 +220,45 @@
         <pre id="diagnostics-text">Loading...</pre>
       </div>
       <div id="diagnostics-result" class="hidden"></div>
+    </div>
+
+    <div id="services-panel" class="hidden">
+      <div id="services-header">
+        <span>Service Controls</span>
+        <button id="services-refresh-btn" class="small-btn">↻ Refresh</button>
+        <button id="services-logs-btn" class="small-btn">📂 Logs</button>
+        <button id="services-close-btn" class="small-btn">✕</button>
+      </div>
+      <div id="services-content">
+        <div class="services-row">
+          <span class="services-dot" id="srv-backend-dot"></span>
+          <span class="services-name">Backend</span>
+          <span class="services-port">:8787</span>
+          <span class="services-status" id="srv-backend-status"></span>
+        </div>
+        <div class="services-row">
+          <span class="services-dot" id="srv-ollama-dot"></span>
+          <span class="services-name">Ollama</span>
+          <span class="services-port">:11434</span>
+          <span class="services-status" id="srv-ollama-status"></span>
+        </div>
+        <div class="services-row">
+          <span class="services-dot" id="srv-opencode-dot"></span>
+          <span class="services-name">OpenCode</span>
+          <span class="services-port">:4096</span>
+          <span class="services-status" id="srv-opencode-status"></span>
+        </div>
+        <div class="services-provider-info" id="services-provider-info"></div>
+        <div class="services-output" id="services-output" class="hidden"></div>
+      </div>
+      <div id="services-buttons">
+        <button class="setup-btn services-action-btn" data-action="restart_ollama">🔄 Ollama</button>
+        <button class="setup-btn services-action-btn" data-action="restart_opencode">🔄 OpenCode</button>
+        <button class="setup-btn services-action-btn" data-action="restart_backend">🔄 Backend</button>
+        <button class="setup-btn services-action-btn services-danger" data-action="restart_all">🔄 All</button>
+        <button class="setup-btn services-action-btn services-danger" data-action="stop_all">⏹ Stop All</button>
+      </div>
+      <div id="services-result" class="hidden"></div>
     </div>
 
     <div id="opencode-area" class="hidden">
@@ -1833,6 +1873,100 @@
     $('#models-env-btn').addEventListener('click', async () => {
       const r = await window.electronAPI.openEnvFile();
       if (!r.success) showModelsResult(false, r.message);
+    });
+
+    // ---- Services Panel ----
+
+    let servicesVisible = false;
+    const servicesPanel = $('#services-panel');
+    const servicesResult = $('#services-result');
+    const servicesOutput = $('#services-output');
+
+    async function updateServiceStatus() {
+      const r = await window.electronAPI.getServiceStatus();
+      if (!r || r.success === false) {
+        setSrvDot('srv-backend-dot', 'gray');
+        setSrvDot('srv-ollama-dot', 'gray');
+        setSrvDot('srv-opencode-dot', 'gray');
+        setSrvText('srv-backend-status', 'Disconnected');
+        setSrvText('srv-ollama-status', 'Disconnected');
+        setSrvText('srv-opencode-status', 'Disconnected');
+        setSrvText('services-provider-info', '');
+        return;
+      }
+      const s = r;
+      setSrvDot('srv-backend-dot', s.backend.alive ? 'green' : 'red');
+      setSrvDot('srv-ollama-dot', s.ollama.alive ? 'green' : 'red');
+      setSrvDot('srv-opencode-dot', s.opencode.alive ? 'green' : 'red');
+      setSrvText('srv-backend-status', s.backend.alive ? 'Alive' : 'Offline');
+      setSrvText('srv-ollama-status', s.ollama.alive ? 'Running' : 'Stopped');
+      setSrvText('srv-opencode-status', s.opencode.alive ? 'Running' : 'Stopped');
+      const p = s.settings || {};
+      const info = `Mode: ${p.mode || 'auto'} | Provider: ${p.provider || 'none'} | Ollama: ${p.ollama_model || '-'} | Gemini: ${p.gemini_model || '-'} | OpenAI: ${p.openai_model || '-'}`;
+      setSrvText('services-provider-info', info);
+    }
+
+    function setSrvDot(id, cls) {
+      const el = document.getElementById(id);
+      if (el) {
+        el.className = 'services-dot';
+        if (cls) el.classList.add(cls);
+      }
+    }
+
+    function setSrvText(id, text) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    }
+
+    async function runServiceAction(action) {
+      servicesOutput.classList.remove('hidden');
+      servicesOutput.textContent = 'Running: ' + action + '...';
+      const r = await window.electronAPI.runServiceAction(action);
+      servicesOutput.textContent = r.message || (r.success ? 'Done' : 'Failed');
+      showServicesResult(r.success, r.message || (r.success ? 'Success' : 'Unknown error'));
+      setTimeout(updateServiceStatus, 3000);
+    }
+
+    function showServicesResult(ok, msg) {
+      servicesResult.classList.remove('hidden');
+      servicesResult.className = ok ? 'success' : 'error';
+      servicesResult.textContent = msg;
+      setTimeout(() => { servicesResult.classList.add('hidden'); }, 5000);
+    }
+
+    $('#services-btn').addEventListener('click', () => {
+      servicesVisible = !servicesVisible;
+      servicesPanel.classList.toggle('hidden', !servicesVisible);
+      if (servicesVisible) {
+        servicesResult.classList.add('hidden');
+        updateServiceStatus();
+      }
+    });
+
+    $('#services-close-btn').addEventListener('click', () => {
+      servicesVisible = false;
+      servicesPanel.classList.add('hidden');
+    });
+
+    $('#services-refresh-btn').addEventListener('click', updateServiceStatus);
+
+    $('#services-logs-btn').addEventListener('click', async () => {
+      const r = await window.electronAPI.openLogsFolder();
+      if (!r.success) showServicesResult(false, r.message);
+    });
+
+    document.querySelectorAll('.services-action-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const action = btn.dataset.action;
+        if (action === 'restart_all' || action === 'stop_all') {
+          const msg = action === 'restart_all'
+            ? 'Restart ALL services (Ollama, OpenCode, Backend)?'
+            : 'Stop ALL services (Ollama, OpenCode, Backend)? This will quit the app.';
+          if (!confirm(msg)) return;
+        }
+        await runServiceAction(action);
+      });
     });
   </script>
 </body>
