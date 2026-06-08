@@ -37,6 +37,55 @@
       <button class="preset-btn" data-prompt="Look at the code visible on the screen. Identify any bugs, suggest fixes, and provide improved code.">Fix code</button>
       <button class="preset-btn control-btn" id="control-mac-btn">Control Mac</button>
       <button class="preset-btn opencode-btn" id="opencode-btn">Fix Project with OpenCode</button>
+      <button class="preset-btn setup-btn" id="setup-btn">⚙ Setup</button>
+    </div>
+
+    <div id="setup-panel" class="hidden">
+      <div id="setup-check-list">
+        <div class="setup-item">
+          <span class="setup-indicator" id="setup-screen-dot"></span>
+          <span class="setup-label">Screen Recording</span>
+          <span class="setup-hint" id="setup-screen-hint">Needed for screenshots</span>
+        </div>
+        <div class="setup-item">
+          <span class="setup-indicator" id="setup-access-dot"></span>
+          <span class="setup-label">Accessibility</span>
+          <span class="setup-hint" id="setup-access-hint">Needed for click/type control</span>
+        </div>
+        <div class="setup-item">
+          <span class="setup-indicator" id="setup-backend-dot"></span>
+          <span class="setup-label">Backend</span>
+        </div>
+        <div class="setup-item">
+          <span class="setup-indicator" id="setup-ollama-dot"></span>
+          <span class="setup-label">Ollama</span>
+          <span class="setup-hint" id="setup-ollama-hint">AI provider</span>
+        </div>
+        <div class="setup-item">
+          <span class="setup-indicator" id="setup-opencode-dot"></span>
+          <span class="setup-label">OpenCode</span>
+          <span class="setup-hint" id="setup-opencode-hint">Project edits</span>
+        </div>
+        <div class="setup-item">
+          <span class="setup-label">Provider:</span>
+          <span id="setup-provider"></span>
+        </div>
+        <div class="setup-item">
+          <span class="setup-label">Project:</span>
+          <span id="setup-project-path"></span>
+        </div>
+      </div>
+
+      <div id="setup-buttons">
+        <button class="setup-btn" id="setup-screen-setting-btn">⏺ Screen Recording</button>
+        <button class="setup-btn" id="setup-access-setting-btn">🖱 Accessibility</button>
+        <button class="setup-btn test-btn" id="setup-test-screen">📷 Test Screenshot</button>
+        <button class="setup-btn test-btn" id="setup-test-control">🖱 Test Control</button>
+        <button class="setup-btn test-btn" id="setup-test-opencode">📝 Test OpenCode</button>
+        <button class="setup-btn" id="setup-open-folder-btn">📂 Open Project</button>
+      </div>
+
+      <div id="setup-result" class="hidden"></div>
     </div>
 
     <div id="opencode-area" class="hidden">
@@ -692,6 +741,116 @@
         addMessage('assistant', `Error: ${err.message}`);
       }
     }
+
+    // ---- Setup Panel ----
+    const setupPanel = $('#setup-panel');
+    const setupResult = $('#setup-result');
+    let setupVisible = false;
+
+    function setSetupDot(id, ok) {
+      const el = $(`#${id}`);
+      if (el) el.className = 'setup-indicator ' + (ok ? 'setup-ok' : 'setup-fail');
+    }
+
+    async function refreshSetupStatus() {
+      try {
+        const st = await window.electronAPI.getSetupStatus();
+        setSetupDot('setup-screen-dot', st.screen_recording);
+        setSetupDot('setup-access-dot', st.accessibility);
+        setSetupDot('setup-backend-dot', st.backend);
+        setSetupDot('setup-ollama-dot', st.ollama);
+        setSetupDot('setup-opencode-dot', st.opencode);
+        $('#setup-provider').textContent = st.provider || 'none';
+        const saved = localStorage.getItem('sompter_opencode_path');
+        $('#setup-project-path').textContent = saved || '(not set)';
+
+        if (!st.screen_recording) {
+          $('#setup-screen-hint').textContent = '⛔ Needed for screenshots';
+        } else {
+          $('#setup-screen-hint').textContent = '✅ Ready';
+        }
+        if (!st.accessibility) {
+          $('#setup-access-hint').textContent = '⛔ Needed for click/type control';
+        } else {
+          $('#setup-access-hint').textContent = '✅ Ready';
+        }
+        if (!st.ollama) {
+          $('#setup-ollama-hint').textContent = '⛔ Run: ollama serve';
+        } else {
+          $('#setup-ollama-hint').textContent = '✅ Running';
+        }
+        if (!st.opencode) {
+          $('#setup-opencode-hint').textContent = '⚠ Fallback prompt saving works';
+        } else {
+          $('#setup-opencode-hint').textContent = '✅ Connected';
+        }
+      } catch (err) {
+        setSetupDot('setup-screen-dot', false);
+        setSetupDot('setup-access-dot', false);
+        setSetupDot('setup-backend-dot', false);
+        setSetupDot('setup-ollama-dot', false);
+        setSetupDot('setup-opencode-dot', false);
+        $('#setup-provider').textContent = 'error';
+      }
+    }
+
+    async function toggleSetup() {
+      setupVisible = !setupVisible;
+      setupPanel.classList.toggle('hidden', !setupVisible);
+      if (setupVisible) {
+        setupResult.classList.add('hidden');
+        await refreshSetupStatus();
+      }
+    }
+
+    function showSetupResult(ok, msg) {
+      setupResult.classList.remove('hidden');
+      setupResult.className = ok ? 'setup-result-ok' : 'setup-result-fail';
+      setupResult.textContent = msg;
+      setTimeout(() => setupResult.classList.add('hidden'), 5000);
+    }
+
+    $('#setup-btn').addEventListener('click', toggleSetup);
+
+    $('#setup-screen-setting-btn').addEventListener('click', async () => {
+      const r = await window.electronAPI.openPrivacySettings('Privacy_ScreenCapture');
+      if (!r.success) showSetupResult(false, r.message);
+    });
+
+    $('#setup-access-setting-btn').addEventListener('click', async () => {
+      const r = await window.electronAPI.openPrivacySettings('Privacy_Accessibility');
+      if (!r.success) showSetupResult(false, r.message);
+    });
+
+    $('#setup-test-screen').addEventListener('click', async () => {
+      showSetupResult(true, 'Taking screenshot...');
+      const r = await window.electronAPI.testScreenshot();
+      showSetupResult(r.success, r.message);
+      await refreshSetupStatus();
+    });
+
+    $('#setup-test-control').addEventListener('click', async () => {
+      showSetupResult(true, 'Testing control...');
+      const r = await window.electronAPI.testControl();
+      showSetupResult(r.success, r.message);
+      await refreshSetupStatus();
+    });
+
+    $('#setup-test-opencode').addEventListener('click', async () => {
+      showSetupResult(true, 'Testing OpenCode...');
+      const r = await window.electronAPI.testOpencode();
+      showSetupResult(r.success, r.message);
+      await refreshSetupStatus();
+    });
+
+    $('#setup-open-folder-btn').addEventListener('click', async () => {
+      const saved = localStorage.getItem('sompter_opencode_path');
+      if (saved) {
+        await window.electronAPI.openFolder(saved);
+      } else {
+        showSetupResult(false, 'No project path set');
+      }
+    });
   </script>
 </body>
 </html>

@@ -384,6 +384,77 @@ async def health():
     }
 
 
+@app.get("/api/setup/status")
+async def setup_status():
+    oa = ollama_available()
+    oc = find_opencode_server()
+    provider = "ollama" if oa else "gemini" if gemini_api_key else "openai" if openai_api_key else "none"
+
+    screen_ok = False
+    try:
+        r = subprocess.run(
+            ["screencapture", "-x", "/tmp/sompter_setup_screen.png"],
+            capture_output=True, timeout=5,
+        )
+        screen_ok = r.returncode == 0
+        if os.path.exists("/tmp/sompter_setup_screen.png"):
+            os.unlink("/tmp/sompter_setup_screen.png")
+    except Exception:
+        pass
+
+    access_ok = False
+    try:
+        pyautogui.position()
+        access_ok = True
+    except Exception:
+        pass
+
+    return {
+        "screen_recording": screen_ok,
+        "accessibility": access_ok,
+        "backend": True,
+        "ollama": oa,
+        "opencode": oc is not None,
+        "provider": provider,
+    }
+
+
+@app.post("/api/setup/test_screenshot")
+async def setup_test_screenshot():
+    try:
+        r = subprocess.run(
+            ["screencapture", "-x", "/tmp/sompter_setup_test.png"],
+            capture_output=True, timeout=10,
+        )
+        if r.returncode == 0:
+            size = os.path.getsize("/tmp/sompter_setup_test.png")
+            os.unlink("/tmp/sompter_setup_test.png")
+            return {"success": True, "message": f"Screenshot captured ({size} bytes)"}
+        error_msg = (r.stderr or b"").decode().strip() or "unknown error"
+        return {"success": False, "message": f"screencapture failed: {error_msg[:200]}"}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "message": "Screenshot timed out — grant Screen Recording permission"}
+    except Exception as e:
+        return {"success": False, "message": str(e)}
+
+
+@app.post("/api/setup/test_control")
+async def setup_test_control():
+    try:
+        x, y = pyautogui.position()
+        return {"success": True, "message": f"Mouse position: ({x}, {y})", "mouse_x": x, "mouse_y": y}
+    except Exception as e:
+        return {"success": False, "message": f"Cannot read mouse: {e}"}
+
+
+@app.post("/api/setup/test_opencode")
+async def setup_test_opencode():
+    port = find_opencode_server()
+    if port:
+        return {"success": True, "message": f"OpenCode serve running on port {port}"}
+    return {"success": False, "message": "OpenCode serve not running (fallback prompt saving available)"}
+
+
 @app.post("/api/search")
 async def search(query: str):
     return {"results": web_search(query)}

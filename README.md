@@ -15,6 +15,19 @@ Or use the launcher script:
 npm run start:app
 ```
 
+## Setup Checklist
+
+1. Run `npm run start:app`
+2. Click **⚙ Setup** in the sidebar
+3. If **Screen Recording** shows red, click "Screen Recording" button and grant permission
+4. If **Accessibility** shows red, click "Accessibility" button and grant permission
+5. Confirm all indicators turn green
+6. Click **Test Screenshot** to verify screen capture works
+7. Click **Test Control** to verify mouse reading works
+8. Click **Test OpenCode** to verify OpenCode connectivity
+9. Set a project path via **Fix Project with OpenCode** > Save
+10. Confirm footer shows green dots for Backend/Ollama/OpenCode
+
 ## Package Scripts
 
 | Command | Description |

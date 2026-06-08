@@ -26,6 +26,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Health
   getHealth: () => ipcRenderer.invoke('getHealth'),
 
+  // Setup
+  getSetupStatus: () => ipcRenderer.invoke('getSetupStatus'),
+  testScreenshot: () => ipcRenderer.invoke('testScreenshot'),
+  testControl: () => ipcRenderer.invoke('testControl'),
+  testOpencode: () => ipcRenderer.invoke('testOpencode'),
+  openPrivacySettings: (pane) => ipcRenderer.invoke('openPrivacySettings', pane),
+
   // Global toggle
   onGlobalToggle: (callback) => {
     ipcRenderer.on('global-toggle', () => callback());
