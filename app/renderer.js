@@ -33,6 +33,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   testOpencode: () => ipcRenderer.invoke('testOpencode'),
   openPrivacySettings: (pane) => ipcRenderer.invoke('openPrivacySettings', pane),
 
+  // Folder selection
+  selectFolder: () => ipcRenderer.invoke('selectFolder'),
+
   // Global toggle
   onGlobalToggle: (callback) => {
     ipcRenderer.on('global-toggle', () => callback());

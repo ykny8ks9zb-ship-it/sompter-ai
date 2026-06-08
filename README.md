@@ -147,6 +147,18 @@ Click **🕘 History** to view recent conversations. Each entry shows:
 
 History is saved locally in localStorage (up to 50 entries). Click **🗑 Clear** to erase all history. Secrets (API keys, passwords) are masked before saving.
 
+## Project Profiles
+
+Save and quickly switch between coding projects. In the **Fix Project with OpenCode** section:
+
+- **Project dropdown** — Select a saved project profile
+- **Choose** — Open macOS folder picker dialog (automatically offers to save as profile)
+- **Save As** — Save current path as a named profile
+- **✕** — Delete the selected profile
+- **★** — First profile saved becomes default; reorder by saving
+
+On launch, the last-used or default project is automatically loaded. Profiles persist in localStorage.
+
 ## Architecture
 
 - `app/` — Electron frontend (main, renderer, HTML, CSS)

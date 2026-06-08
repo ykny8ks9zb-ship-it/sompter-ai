@@ -1144,3 +1144,39 @@ textarea.action-param {
   background: #3d3d5c;
   color: #c4b5fd;
 }
+
+/* ---- Project Profiles ---- */
+
+#opencode-settings .field-row {
+  gap: 4px;
+}
+
+#opencode-settings select.action-param {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+#project-choose-btn,
+#project-save-btn {
+  white-space: nowrap;
+  font-size: 10px;
+  padding: 5px 8px;
+}
+
+#project-delete-btn {
+  font-size: 10px;
+  padding: 5px 8px;
+  color: #ef4444 !important;
+  border-color: #7f1d1d !important;
+}
+
+#project-delete-btn:hover {
+  background: #7f1d1d !important;
+  color: #fff !important;
+}
+
+#project-path-warn {
+  font-size: 10px;
+  padding: 2px 0;
+}

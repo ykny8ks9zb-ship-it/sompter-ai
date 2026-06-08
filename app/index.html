@@ -138,10 +138,18 @@
     <div id="opencode-area" class="hidden">
       <div id="opencode-settings">
         <div class="field-row">
-          <label>Project path:</label>
-          <input type="text" id="opencode-path" class="action-param" placeholder="/path/to/project" />
-          <button id="opencode-save-path" class="small-btn">Save</button>
+          <label>Project:</label>
+          <select id="project-select" class="action-param">
+            <option value="">(no project)</option>
+          </select>
+          <button id="project-delete-btn" class="small-btn" title="Delete selected profile">✕</button>
         </div>
+        <div class="field-row">
+          <input type="text" id="opencode-path" class="action-param" placeholder="/path/to/project" readonly />
+          <button id="project-choose-btn" class="small-btn">Choose</button>
+          <button id="project-save-btn" class="small-btn">Save As</button>
+        </div>
+        <div id="project-path-warn" class="hidden field-note">⚠ Path does not exist</div>
       </div>
       <div id="opencode-status" class="hidden">
         <span id="opencode-status-text"></span>
@@ -358,6 +366,21 @@
     const runActionBtn = $('#run-action-btn');
     const cancelActionBtn = $('#cancel-action-btn');
     const highRiskWarning = $('#high-risk-warning');
+
+    const opencodeArea = $('#opencode-area');
+    const opencodePath = $('#opencode-path');
+    const opencodeStatus = $('#opencode-status');
+    const opencodeStatusText = $('#opencode-status-text');
+    const opencodeOutput = $('#opencode-output');
+    const opencodeOutputText = $('#opencode-output-text');
+    const opencodeReview = $('#opencode-review');
+    const reviewOutput = $('#review-output');
+    const reviewOutputText = $('#review-output-text');
+    const reviewTestArea = $('#review-test-area');
+    const reviewTestCommand = $('#review-test-command');
+
+    let lastProjectPath = '';
+    let lastPromptFile = '';
 
     let currentMode = 'ask';
     let currentAction = null;
@@ -680,6 +703,74 @@
       }
     }
 
+    function showReviewOutput(text) {
+      reviewOutput.classList.remove('hidden');
+      reviewOutputText.textContent = text;
+      addMessage('assistant', text.slice(0, 500));
+    }
+
+    document.getElementById('review-status-btn').addEventListener('click', async () => {
+      if (!lastProjectPath) return;
+      try {
+        const result = await window.electronAPI.projectStatus(lastProjectPath);
+        if (result.success) {
+          showReviewOutput(`Changed files:\n${result.files}`);
+        } else {
+          showReviewOutput(`Error: ${result.message}`);
+        }
+      } catch (err) {
+        showReviewOutput(`Error: ${err.message}`);
+      }
+    });
+
+    document.getElementById('review-diff-btn').addEventListener('click', async () => {
+      if (!lastProjectPath) return;
+      try {
+        const result = await window.electronAPI.projectDiff(lastProjectPath);
+        if (result.success) {
+          showReviewOutput(`Diff summary:\n${result.stat}\n\nFull diff:\n${result.diff}`);
+        } else {
+          showReviewOutput(`Error: ${result.message}`);
+        }
+      } catch (err) {
+        showReviewOutput(`Error: ${err.message}`);
+      }
+    });
+
+    document.getElementById('review-test-btn').addEventListener('click', () => {
+      reviewTestArea.classList.toggle('hidden');
+    });
+
+    document.getElementById('review-test-run-btn').addEventListener('click', async () => {
+      if (!lastProjectPath) return;
+      const cmd = reviewTestCommand.value.trim();
+      if (!cmd) return;
+      reviewTestArea.classList.add('hidden');
+      try {
+        const result = await window.electronAPI.runTest(lastProjectPath, cmd);
+        if (result.success) {
+          showReviewOutput(`Tests passed:\n${result.message}`);
+        } else {
+          showReviewOutput(`Tests failed:\n${result.message}`);
+        }
+      } catch (err) {
+        showReviewOutput(`Error: ${err.message}`);
+      }
+    });
+
+    document.getElementById('review-open-btn').addEventListener('click', async () => {
+      if (!lastProjectPath) return;
+      await window.electronAPI.openFolder(lastProjectPath);
+    });
+
+    document.getElementById('review-prompt-btn').addEventListener('click', async () => {
+      if (lastPromptFile) {
+        await window.electronAPI.openFile(lastPromptFile);
+      } else if (lastProjectPath) {
+        await window.electronAPI.openFolder(lastProjectPath);
+      }
+    });
+
     async function runOpencodeWithPrompt(promptText) {
       const projectPath = opencodePath.value.trim();
       if (!projectPath) {
@@ -990,7 +1081,195 @@
       if (rerunBtn) rerunHistoryEntry(rerunBtn.dataset.id);
     });
 
-    sendBtn.addEventListener('click', () => {
+    // ---- Project Profiles ----
+    const LS_PROFILES = 'sompter_profiles';
+    let currentProfileId = null;
+
+    function loadProfiles() {
+      try {
+        const raw = localStorage.getItem(LS_PROFILES);
+        return raw ? JSON.parse(raw) : [];
+      } catch { return []; }
+    }
+
+    function saveProfiles(profiles) {
+      localStorage.setItem(LS_PROFILES, JSON.stringify(profiles));
+    }
+
+    function getActiveProfile() {
+      const profiles = loadProfiles();
+      if (currentProfileId) {
+        const p = profiles.find(x => x.id === currentProfileId);
+        if (p) return p;
+      }
+      const def = profiles.find(x => x.isDefault);
+      if (def) return def;
+      const sorted = [...profiles].sort((a, b) => new Date(b.lastUsed) - new Date(a.lastUsed));
+      return sorted[0] || null;
+    }
+
+    function renderProjectSelect() {
+      const profiles = loadProfiles();
+      const select = $('#project-select');
+      const currentPath = $('#opencode-path').value;
+      select.innerHTML = '<option value="">(no project)</option>';
+      profiles.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name + (p.isDefault ? ' ★' : '');
+        if (p.id === currentProfileId) opt.selected = true;
+        select.appendChild(opt);
+      });
+      if (!currentProfileId && profiles.length > 0 && currentPath) {
+        const match = profiles.find(p => p.path === currentPath);
+        if (match) {
+          currentProfileId = match.id;
+          select.value = match.id;
+        }
+      }
+      validateProjectPath();
+    }
+
+    function validateProjectPath() {
+      const path = $('#opencode-path').value;
+      const warn = $('#project-path-warn');
+      if (path) {
+        const exists = window.electronAPI ? true : false;
+        warn.classList.toggle('hidden', true);
+      } else {
+        warn.classList.add('hidden');
+      }
+    }
+
+    function selectProfile(id) {
+      const profiles = loadProfiles();
+      const p = profiles.find(x => x.id === id);
+      if (p) {
+        currentProfileId = p.id;
+        $('#opencode-path').value = p.path;
+        p.lastUsed = new Date().toISOString();
+        saveProfiles(profiles);
+        renderProjectSelect();
+        localStorage.setItem('sompter_opencode_path', p.path);
+      }
+    }
+
+    async function initProjectProfile() {
+      const profiles = loadProfiles();
+      if (profiles.length === 0) {
+        const savedPath = localStorage.getItem('sompter_opencode_path');
+        if (savedPath) {
+          $('#opencode-path').value = savedPath;
+        }
+        return;
+      }
+      const active = getActiveProfile();
+      if (active) {
+        currentProfileId = active.id;
+        $('#opencode-path').value = active.path;
+        localStorage.setItem('sompter_opencode_path', active.path);
+      }
+      renderProjectSelect();
+    }
+
+    // ---- Project profile event listeners ----
+    $('#project-choose-btn').addEventListener('click', async () => {
+      const result = await window.electronAPI.selectFolder();
+      if (result.success && result.path) {
+        $('#opencode-path').value = result.path;
+        localStorage.setItem('sompter_opencode_path', result.path);
+        currentProfileId = null;
+        renderProjectSelect();
+
+        const name = result.path.split('/').pop() || 'Project';
+        const ok = confirm(`Save "${name}" as a project profile?`);
+        if (ok) {
+          const profiles = loadProfiles();
+          const existing = profiles.find(p => p.path === result.path);
+          if (existing) {
+            currentProfileId = existing.id;
+            existing.lastUsed = new Date().toISOString();
+            saveProfiles(profiles);
+          } else {
+            const profile = {
+              id: 'proj_' + Date.now().toString(36),
+              name: name,
+              path: result.path,
+              isDefault: profiles.length === 0,
+              lastUsed: new Date().toISOString(),
+            };
+            profiles.push(profile);
+            saveProfiles(profiles);
+            currentProfileId = profile.id;
+          }
+          renderProjectSelect();
+        }
+      }
+    });
+
+    $('#project-save-btn').addEventListener('click', () => {
+      const path = $('#opencode-path').value.trim();
+      if (!path) return;
+      const name = prompt('Profile name:', path.split('/').pop() || 'Project');
+      if (!name) return;
+      const profiles = loadProfiles();
+      const existing = profiles.find(p => p.path === path);
+      if (existing) {
+        existing.name = name;
+        existing.lastUsed = new Date().toISOString();
+        currentProfileId = existing.id;
+        saveProfiles(profiles);
+      } else {
+        const profile = {
+          id: 'proj_' + Date.now().toString(36),
+          name: name,
+          path: path,
+          isDefault: profiles.length === 0,
+          lastUsed: new Date().toISOString(),
+        };
+        profiles.push(profile);
+        saveProfiles(profiles);
+        currentProfileId = profile.id;
+      }
+      renderProjectSelect();
+    });
+
+    $('#project-select').addEventListener('change', (e) => {
+      const id = e.target.value;
+      if (id) {
+        selectProfile(id);
+      } else {
+        currentProfileId = null;
+        $('#opencode-path').value = '';
+        localStorage.setItem('sompter_opencode_path', '');
+        renderProjectSelect();
+      }
+    });
+
+    $('#project-delete-btn').addEventListener('click', () => {
+      const id = $('#project-select').value;
+      if (!id) return;
+      const profiles = loadProfiles();
+      const p = profiles.find(x => x.id === id);
+      if (!p) return;
+      if (!confirm(`Delete profile "${p.name}"?`)) return;
+      const updated = profiles.filter(x => x.id !== id);
+      saveProfiles(updated);
+      if (currentProfileId === id) {
+        currentProfileId = null;
+        const next = updated[0] || null;
+        if (next) {
+          selectProfile(next.id);
+        } else {
+          $('#opencode-path').value = '';
+          localStorage.setItem('sompter_opencode_path', '');
+        }
+      }
+      renderProjectSelect();
+    });
+
+    // ---- Init profiles on load ----
+    initProjectProfile();
       ask(chatInput.value);
       chatInput.value = '';
     });
@@ -1041,8 +1320,13 @@
         setSetupDot('setup-ollama-dot', st.ollama);
         setSetupDot('setup-opencode-dot', st.opencode);
         $('#setup-provider').textContent = st.provider || 'none';
-        const saved = localStorage.getItem('sompter_opencode_path');
-        $('#setup-project-path').textContent = saved || '(not set)';
+        const active = getActiveProfile();
+        if (active) {
+          $('#setup-project-path').textContent = active.name + ' (' + active.path + ')';
+        } else {
+          const saved = localStorage.getItem('sompter_opencode_path');
+          $('#setup-project-path').textContent = saved || '(not set)';
+        }
 
         if (!st.screen_recording) {
           $('#setup-screen-hint').textContent = '⛔ Needed for screenshots';
@@ -1124,9 +1408,10 @@
     });
 
     $('#setup-open-folder-btn').addEventListener('click', async () => {
-      const saved = localStorage.getItem('sompter_opencode_path');
-      if (saved) {
-        await window.electronAPI.openFolder(saved);
+      const active = getActiveProfile();
+      const path = active ? active.path : localStorage.getItem('sompter_opencode_path');
+      if (path) {
+        await window.electronAPI.openFolder(path);
       } else {
         showSetupResult(false, 'No project path set');
       }

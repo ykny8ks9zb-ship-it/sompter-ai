@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, screen, globalShortcut, dialog } = require('electron');
 const path = require('path');
 const { execFile } = require('child_process');
 const fs = require('fs');
@@ -268,4 +268,12 @@ ipcMain.handle('runAction', async (_event, { action, params }) => {
   } catch (err) {
     return { success: false, message: `Error: ${err.message}` };
   }
+});
+
+ipcMain.handle('selectFolder', async () => {
+  const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: false, canceled: true };
+  }
+  return { success: true, path: result.filePaths[0] };
 });
