@@ -15,6 +15,112 @@ Or use the launcher script:
 npm run start:app
 ```
 
+Or use the packaged app (if built):
+
+```bash
+npm run package:mac
+open dist/Sompter\ AI-*.dmg
+# Then drag Sompter AI.app to /Applications
+# Open from Finder, Spotlight, or Dock
+```
+
+## Build & Package
+
+Sompter AI can be packaged as a standalone macOS `.app` bundle using `electron-builder`.
+
+### Prerequisites
+
+Before packaging, ensure you have:
+- The project fully set up (`.venv`, `npm install`, `.env`)
+- Python 3 installed with all backend dependencies
+- `opencode` CLI available in PATH
+
+### Package Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run package:mac` | Build `.app` + `.dmg` installer |
+| `npm run dist:mac` | Build `.app` only (no DMG) |
+| `npm run open:app` | Open the built DMG installer |
+
+### Build the .app
+
+```bash
+npm run package:mac
+```
+
+The `.app` and `.dmg` appear in `dist/`:
+```
+dist/
+  Sompter AI-1.0.0-arm64.dmg
+  mac/
+    Sompter AI.app
+```
+
+### Install
+
+1. Open the `.dmg` (or run `npm run open:app`)
+2. Drag **Sompter AI.app** to **/Applications**
+3. Launch from Finder, Spotlight, or Dock
+
+Alternatively, run the `.app` directly from `dist/mac/`:
+```bash
+npm run dist:mac
+open dist/mac/Sompter\ AI.app
+```
+
+### What the Packaged App Does
+
+On launch, the `.app`:
+- Starts the Electron sidebar UI with the tray menu bar icon
+- Automatically starts the FastAPI backend (`uvicorn backend.server:app`)
+- Automatically starts `opencode serve`
+- All existing features work: screen AI, control, smart fix, diagnostics,
+  service controls, provider settings, and notifications
+
+Service startup logs are written to `/tmp/sompter-backend.log` and
+`/tmp/sompter-opencode.log`.
+
+### Permissions for the Packaged App
+
+The packaged `.app` is a **different process** from Terminal or `npx electron`.
+You may need to grant Screen Recording and Accessibility permissions
+separately for `Sompter AI.app`:
+
+1. Open **System Settings → Privacy & Security**
+2. **Screen Recording** → Add `Sompter AI.app` and enable it
+3. **Accessibility** → Add `Sompter AI.app` and enable it
+4. Restart the app after granting permissions
+
+### Login Items
+
+To auto-launch on login:
+
+1. Open **System Settings → General → Login Items**
+2. Click **+** and select `Sompter AI.app` from `/Applications`
+3. The app will start on next login
+
+### Troubleshooting
+
+- **"Backend offline" in menu bar** — The backend may not have started.
+  Check `/tmp/sompter-backend.log`. Run `npm run start:app` from the project
+  directory as a fallback.
+- **"opencode not found"** — Install or update: `npm install -g opencode`
+- **.app shows briefly then quits** — Check Console.app for crash logs.
+  Ensure `.venv` and Python dependencies are installed.
+- **Permission issues** — Grant Screen Recording + Accessibility to
+  `Sompter AI.app` separately (see above).
+
+### Fallback: Run without Packaging
+
+If the packaged app has issues, always fall back to the dev launcher:
+
+```bash
+npm run start:app
+```
+
+This runs everything from Terminal with full logs visible.
+
 ## Setup Checklist
 
 1. Run `npm run start:app`
@@ -37,26 +143,13 @@ npm run start:app
 | `npm run stop` | Stop all Sompter processes |
 | `npm run health` | Check backend/Ollama/OpenCode status |
 
-## Making a Clickable Mac App
-
-To launch Sompter AI like a normal Mac app:
-
-1. Open **Automator** (from Applications)
-2. Choose **Application** type
-3. Add **Run Shell Script** action
-4. Enter:
-   ```bash
-   cd /Users/charliekrason/Documents/desk/untitled\ folder/sompter-ai && npm run start:app
-   ```
-5. File > Save as **Sompter AI.app**
-6. (Optional) Add to **Login Items** in System Settings > General > Login Items
-
-## Permissions Required
-
 ## Permissions Required
 
 - **Screen Recording** — needed for screenshot capture (macOS will prompt on first use)
 - **Accessibility** — needed for keyboard shortcuts and window management
+
+> **Note for packaged app:** If using `Sompter AI.app`, you may need to grant
+> permissions separately. See the Packaging section above.
 
 ## Troubleshooting
 
