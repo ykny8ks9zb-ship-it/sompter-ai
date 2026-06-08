@@ -49,7 +49,7 @@ VALID_ACTION_TYPES = {"click", "type", "hotkey", "open_app", "run_command", "non
 
 CONTROL_PLAN_PROMPT = """You are a Mac AI assistant that can see the user's screen. Your job is to analyze the screenshot and suggest ONE concrete, safe, useful next action.
 
-Return ONLY valid JSON with no markdown formatting, no code fences, no extra text. Just the raw JSON object.
+Return ONLY valid JSON with no markdown formatting, no code fences, no extra text. Just the raw JSON object. Do not escape single quotes (') inside strings — they are valid as-is.
 
 The JSON must follow this exact structure:
 {
@@ -278,6 +278,9 @@ def extract_json(text: str) -> dict | None:
                 break
             end_lines.append(line)
         text = "\n".join(end_lines).strip()
+
+    # Fix common AI JSON mistakes: \' is not valid JSON, unescape to '
+    text = text.replace("\\'", "'")
 
     try:
         return json.loads(text)
