@@ -34,6 +34,7 @@
       <div id="preset-buttons"></div>
       <div id="preset-actions">
         <button class="preset-action-btn setup-btn" id="prompts-edit-btn">✏️ Prompts</button>
+        <button class="preset-action-btn setup-btn" id="history-btn">🕘 History</button>
         <button class="preset-action-btn setup-btn" id="setup-btn">⚙ Setup</button>
       </div>
     </div>
@@ -74,6 +75,16 @@
         <button id="prompts-editor-cancel-btn" class="small-btn">Cancel</button>
         <button id="prompts-delete-btn" class="small-btn delete-btn">Delete</button>
       </div>
+    </div>
+
+    <div id="history-panel" class="hidden">
+      <div id="history-header">
+        <span>Conversation History</span>
+        <button id="history-clear-btn" class="small-btn">🗑 Clear</button>
+        <button id="history-close-btn" class="small-btn">✕</button>
+      </div>
+      <div id="history-list"></div>
+      <div id="history-empty" class="hidden">No history yet.</div>
     </div>
 
     <div id="setup-panel" class="hidden">
@@ -411,9 +422,12 @@
         loading.remove();
 
         if (plan.success) {
-          addMessage('assistant', `Summary: ${plan.summary}\nSuggested: ${plan.recommended_action.reason}`);
+          const msg = `Summary: ${plan.summary}\nSuggested: ${plan.recommended_action.reason}`;
+          addMessage('assistant', msg);
+          addHistoryEntry('control', 'Control Mac', JSON.stringify({ summary: plan.summary, action: plan.recommended_action }), 'success');
         } else {
           addMessage('assistant', `Plan failed: ${plan.summary}`);
+          addHistoryEntry('control', 'Control Mac', plan.summary, 'failed');
         }
 
         displayPlan(plan);
@@ -421,6 +435,7 @@
         loading.remove();
         addMessage('assistant', `Error: ${err.message}`);
         setMode('ask');
+        addHistoryEntry('control', 'Control Mac', err.message, 'failed');
       }
     }
 
@@ -693,16 +708,19 @@
           opencodeOutputText.textContent = result.output;
           addMessage('assistant', result.output);
           lastPromptFile = result.prompt_file || '';
+          addHistoryEntry('opencode', promptText, result.output, 'warn');
         } else if (result.success) {
           opencodeStatusText.textContent = 'OpenCode Done';
           opencodeStatusText.className = 'opencode-status-done';
           opencodeOutputText.textContent = result.output || '(no output)';
           addMessage('assistant', `OpenCode completed:\n${(result.output || '').slice(0, 500)}`);
+          addHistoryEntry('opencode', promptText, (result.output || '').slice(0, 500), 'success');
         } else {
           opencodeStatusText.textContent = 'OpenCode Error';
           opencodeStatusText.className = 'opencode-status-error';
           opencodeOutputText.textContent = result.output || '(no output)';
           addMessage('assistant', `OpenCode failed:\n${(result.output || '').slice(0, 500)}`);
+          addHistoryEntry('opencode', promptText, result.output, 'failed');
         }
       } catch (err) {
         opencodeStatusText.textContent = 'OpenCode Error';
@@ -711,6 +729,7 @@
         opencodeOutputText.textContent = `Error: ${err.message}`;
         addMessage('assistant', `Error: ${err.message}`);
         opencodeReview.classList.remove('hidden');
+        addHistoryEntry('opencode', promptText, err.message, 'failed');
       }
     }
 
@@ -826,6 +845,151 @@
       }
     });
 
+    // ---- Conversation History ----
+    const LS_HISTORY = 'sompter_history';
+    const MAX_HISTORY = 50;
+    let historyVisible = false;
+
+    function loadHistory() {
+      try {
+        const raw = localStorage.getItem(LS_HISTORY);
+        return raw ? JSON.parse(raw) : [];
+      } catch { return []; }
+    }
+
+    function saveHistory(entries) {
+      localStorage.setItem(LS_HISTORY, JSON.stringify(entries.slice(0, MAX_HISTORY)));
+    }
+
+    function maskSecrets(text) {
+      if (!text) return text;
+      let masked = text;
+      const patterns = [
+        [/sk-[a-zA-Z0-9]{20,}/g, 'sk-...'],
+        [/AIza[0-9A-Za-z\-_]{35}/g, 'AIza...'],
+        [/["']openai_api_key["']\s*:\s*["'][^"']+["']/gi, '"openai_api_key": "..."'],
+        [/["']password["']\s*:\s*["'][^"']+["']/gi, '"password": "..."'],
+        [/["']api_key["']\s*:\s*["'][^"']+["']/gi, '"api_key": "..."'],
+      ];
+      for (const [re, replacement] of patterns) {
+        masked = masked.replace(re, replacement);
+      }
+      return masked;
+    }
+
+    function addHistoryEntry(mode, prompt, response, status) {
+      const entries = loadHistory();
+      entries.unshift({
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+        timestamp: new Date().toISOString(),
+        mode,
+        prompt: maskSecrets(prompt),
+        response: maskSecrets(response),
+        status: status || 'success',
+      });
+      saveHistory(entries);
+      if (historyVisible) renderHistory();
+    }
+
+    function timeAgo(iso) {
+      const diff = Date.now() - new Date(iso).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      const days = Math.floor(hrs / 24);
+      return `${days}d ago`;
+    }
+
+    function renderHistory() {
+      const entries = loadHistory();
+      const list = $('#history-list');
+      const empty = $('#history-empty');
+
+      if (entries.length === 0) {
+        list.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+      }
+      empty.classList.add('hidden');
+
+      const modeIcons = { screen: '\u{1F4F7}', chat: '\u{1F4AC}', control: '\u{1F5B1}', opencode: '\u{1F4DD}', web: '\u{1F310}' };
+      list.innerHTML = entries.map(e => {
+        const promptShort = (e.prompt || '').slice(0, 60) + ((e.prompt || '').length > 60 ? '...' : '');
+        const respShort = (e.response || '').slice(0, 80) + ((e.response || '').length > 80 ? '...' : '');
+        const statusClass = e.status === 'success' ? 'history-ok' : 'history-fail';
+        return `<div class="history-entry ${statusClass}" data-id="${e.id}">
+          <div class="history-head">
+            <span class="history-mode">${modeIcons[e.mode] || ''}</span>
+            <span class="history-time">${timeAgo(e.timestamp)}</span>
+            <span class="history-mode-label">${e.mode}</span>
+          </div>
+          <div class="history-prompt">${maskSecrets(promptShort)}</div>
+          <div class="history-response">${maskSecrets(respShort)}</div>
+          <div class="history-actions">
+            <button class="tiny-btn history-copy-btn" data-id="${e.id}">Copy</button>
+            <button class="tiny-btn history-rerun-btn" data-id="${e.id}">Re-run</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    async function rerunHistoryEntry(id) {
+      const entries = loadHistory();
+      const entry = entries.find(e => e.id === id);
+      if (!entry) return;
+      switch (entry.mode) {
+        case 'screen':
+        case 'chat':
+          await ask(entry.prompt);
+          break;
+        case 'control':
+          await startControl();
+          break;
+        case 'opencode':
+          await runOpencodeWithPrompt(entry.prompt);
+          break;
+      }
+    }
+
+    function copyHistoryEntry(id) {
+      const entries = loadHistory();
+      const entry = entries.find(e => e.id === id);
+      if (!entry) return;
+      const text = `[${entry.mode}] ${entry.prompt}\n\n${entry.response}`;
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+
+    function clearHistory() {
+      saveHistory([]);
+      renderHistory();
+      $('#history-empty').classList.remove('hidden');
+    }
+
+    // ---- History event listeners ----
+    $('#history-btn').addEventListener('click', () => {
+      historyVisible = !historyVisible;
+      $('#history-panel').classList.toggle('hidden', !historyVisible);
+      if (historyVisible) renderHistory();
+    });
+
+    $('#history-close-btn').addEventListener('click', () => {
+      historyVisible = false;
+      $('#history-panel').classList.add('hidden');
+    });
+
+    $('#history-clear-btn').addEventListener('click', () => {
+      clearHistory();
+    });
+
+    $('#history-list').addEventListener('click', (e) => {
+      const copyBtn = e.target.closest('.history-copy-btn');
+      const rerunBtn = e.target.closest('.history-rerun-btn');
+      if (copyBtn) copyHistoryEntry(copyBtn.dataset.id);
+      if (rerunBtn) rerunHistoryEntry(rerunBtn.dataset.id);
+    });
+
     sendBtn.addEventListener('click', () => {
       ask(chatInput.value);
       chatInput.value = '';
@@ -839,6 +1003,7 @@
 
     async function ask(prompt) {
       if (!prompt.trim()) return;
+      const mode = currentMode === 'screen' ? 'screen' : 'chat';
       addMessage('user', prompt);
       const loading = document.createElement('div');
       loading.className = 'message assistant loading';
@@ -847,10 +1012,13 @@
       try {
         const result = await window.electronAPI.ask(prompt);
         loading.remove();
-        addMessage('assistant', result.success ? result.message : result.message);
+        const msg = result.success ? result.message : result.message;
+        addMessage('assistant', msg);
+        addHistoryEntry(mode, prompt, msg, result.success ? 'success' : 'failed');
       } catch (err) {
         loading.remove();
         addMessage('assistant', `Error: ${err.message}`);
+        addHistoryEntry(mode, prompt, err.message, 'failed');
       }
     }
 

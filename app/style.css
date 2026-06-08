@@ -212,7 +212,7 @@ header {
 
 #preset-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 5px;
 }
 
@@ -1020,4 +1020,127 @@ textarea.action-param {
 .delete-btn:hover {
   background: #991b1b !important;
   color: #fff !important;
+}
+
+/* ---- History Panel ---- */
+
+#history-panel {
+  background: #1e1e38;
+  border: 1px solid #3d3d5c;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  -webkit-app-region: no-drag;
+}
+
+#history-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #a78bfa;
+}
+
+#history-header .small-btn {
+  font-size: 10px;
+  padding: 3px 8px;
+}
+
+#history-close-btn {
+  margin-left: auto;
+}
+
+#history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+#history-empty {
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+  padding: 16px;
+}
+
+.history-entry {
+  background: #16162a;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  cursor: default;
+}
+
+.history-entry.history-ok {
+  border-left: 3px solid #22c55e;
+}
+
+.history-entry.history-fail {
+  border-left: 3px solid #ef4444;
+}
+
+.history-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 3px;
+}
+
+.history-mode {
+  font-size: 12px;
+}
+
+.history-time {
+  color: #666;
+  font-size: 10px;
+}
+
+.history-mode-label {
+  font-size: 9px;
+  color: #7c3aed;
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-left: auto;
+}
+
+.history-prompt {
+  color: #c0c0d0;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-response {
+  color: #888;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 3px;
+}
+
+.history-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.tiny-btn {
+  background: #2d2d4a;
+  border: 1px solid #3d3d5c;
+  color: #a0a0b0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.tiny-btn:hover {
+  background: #3d3d5c;
+  color: #c4b5fd;
 }

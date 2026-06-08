@@ -136,6 +136,17 @@ Built-in presets:
 - **Control Mac** — Plan and execute actions
 - **Fix Project with OpenCode** — Run OpenCode project edits
 
+## Conversation History
+
+Click **🕘 History** to view recent conversations. Each entry shows:
+- Mode icon (screen, chat, control, opencode)
+- Time since the interaction
+- Prompt and response (truncated)
+- **Copy** — Copy the full prompt and response to clipboard
+- **Re-run** — Run the same prompt again
+
+History is saved locally in localStorage (up to 50 entries). Click **🗑 Clear** to erase all history. Secrets (API keys, passwords) are masked before saving.
+
 ## Architecture
 
 - `app/` — Electron frontend (main, renderer, HTML, CSS)
