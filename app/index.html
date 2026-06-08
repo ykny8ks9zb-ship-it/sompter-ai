@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sompter AI</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Collapsed side tab -->
+  <div id="side-tab">
+    <button id="tab-quit-btn" title="Quit">&times;</button>
+    <div id="tab-body">
+      <span id="tab-icon">AI</span>
+    </div>
+  </div>
+
+  <!-- Expanded sidebar content -->
+  <div id="expanded-content">
+    <header>
+      <div id="title-bar">
+        <span id="title">Sompter AI</span>
+        <button id="collapse-btn" title="Collapse to side tab">◀</button>
+      </div>
+    </header>
+
+    <div id="status-bar">
+      <span id="status-dot" class="status-idle"></span>
+      <span id="status-text">Ask Mode</span>
+      <button id="stop-control-btn" class="hidden">STOP CONTROL</button>
+    </div>
+
+    <div id="presets">
+      <button class="preset-btn" data-prompt="Analyze the screen and identify any bugs, errors, or visual issues. Explain what's wrong and how to fix it.">Fix screen</button>
+      <button class="preset-btn" data-prompt="Look at the screen and explain what's happening in detail.">Explain screen</button>
+      <button class="preset-btn" data-prompt="Look at the screen and determine if there is any web-related content. If so, what could be done with it?">Use web</button>
+      <button class="preset-btn" data-prompt="Look at the code visible on the screen. Identify any bugs, suggest fixes, and provide improved code.">Fix code</button>
+      <button class="preset-btn control-btn" id="control-mac-btn">Control Mac</button>
+      <button class="preset-btn opencode-btn" id="opencode-btn">Fix Project with OpenCode</button>
+    </div>
+
+    <div id="opencode-area" class="hidden">
+      <div id="opencode-settings">
+        <div class="field-row">
+          <label>Project path:</label>
+          <input type="text" id="opencode-path" class="action-param" placeholder="/path/to/project" />
+          <button id="opencode-save-path" class="small-btn">Save</button>
+        </div>
+      </div>
+      <div id="opencode-status" class="hidden">
+        <span id="opencode-status-text"></span>
+      </div>
+      <div id="opencode-output" class="hidden">
+        <div class="plan-label">OpenCode Output</div>
+        <pre id="opencode-output-text"></pre>
+      </div>
+      <div id="opencode-review" class="hidden">
+        <div class="opencode-review-buttons">
+          <button class="review-btn" id="review-status-btn">Review Changes</button>
+          <button class="review-btn" id="review-diff-btn">Show Diff</button>
+          <button class="review-btn" id="review-test-btn">Run Tests</button>
+          <button class="review-btn" id="review-open-btn">Open Project Folder</button>
+          <button class="review-btn" id="review-prompt-btn">Open Prompt File</button>
+        </div>
+        <div id="review-test-area" class="hidden">
+          <div class="field-row">
+            <input type="text" id="review-test-command" class="action-param" value="npm test" />
+            <button id="review-test-run-btn" class="small-btn">Run</button>
+          </div>
+        </div>
+        <div id="review-output" class="hidden">
+          <pre id="review-output-text"></pre>
+        </div>
+      </div>
+    </div>
+
+    <div id="control-panel" class="hidden">
+      <div id="plan-display">
+        <div id="plan-summary-box">
+          <div class="plan-label">Summary</div>
+          <div id="plan-summary" class="plan-text">Analyzing screen...</div>
+        </div>
+        <div id="plan-action-box" class="hidden">
+          <div class="plan-label">Recommended Action</div>
+          <div id="plan-action-type" class="plan-action-type"></div>
+          <div id="plan-action-detail" class="plan-text"></div>
+          <div id="plan-reason" class="plan-text plan-reason"></div>
+          <div id="plan-risk" class="plan-risk"></div>
+        </div>
+        <div id="plan-none-box" class="hidden">
+          <div class="plan-text">No actionable suggestion from AI.</div>
+        </div>
+      </div>
+
+      <div id="plan-buttons" class="hidden">
+        <button id="run-plan-btn">Run Recommended Action</button>
+        <button id="cancel-plan-btn">Cancel</button>
+      </div>
+
+      <div id="plan-action-buttons" class="hidden">
+        <button class="action-btn" data-action="click">Click</button>
+        <button class="action-btn" data-action="type">Type</button>
+        <button class="action-btn" data-action="hotkey">Hotkey</button>
+        <button class="action-btn" data-action="open_app">Open App</button>
+        <button class="action-btn" data-action="run_command">Run Command</button>
+      </div>
+
+      <div id="action-input-area" class="hidden">
+        <div id="action-input-label"></div>
+        <div id="action-input-fields"></div>
+        <div id="high-risk-warning" class="field-note hidden">High risk action. Type CONFIRM to proceed.</div>
+        <div id="action-input-buttons">
+          <button id="run-action-btn">Run</button>
+          <button id="cancel-action-btn">Cancel</button>
+        </div>
+      </div>
+
+      <div id="action-result" class="hidden"></div>
+    </div>
+
+    <div id="chat-container">
+      <div id="chat-log"></div>
+    </div>
+
+    <div id="input-area">
+      <input type="text" id="chat-input" placeholder="Ask anything..." />
+      <button id="send-btn">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
+
+    // ---- Collapse / Expand (localStorage state) ----
+
+    const LS_COLLAPSED = 'sompter_collapsed';
+    const LS_Y = 'sompter_y';
+
+    function readState() {
+      return {
+        collapsed: localStorage.getItem(LS_COLLAPSED) === 'true',
+        y: parseInt(localStorage.getItem(LS_Y), 10) || 80,
+      };
+    }
+
+    function writeState(s) {
+      localStorage.setItem(LS_COLLAPSED, s.collapsed);
+      localStorage.setItem(LS_Y, String(s.y));
+    }
+
+    async function initCollapse() {
+      const st = readState();
+      await window.electronAPI.initWindow(st.collapsed, st.y);
+      document.body.classList.toggle('collapsed', st.collapsed);
+
+      window.electronAPI.onWindowStateChanged((collapsed) => {
+        document.body.classList.toggle('collapsed', collapsed);
+      });
+
+      window.electronAPI.onYPositionChanged((y) => {
+        const s = readState();
+        s.y = y;
+        writeState(s);
+      });
+
+      $('#tab-body').addEventListener('click', () => {
+        const s = readState();
+        s.collapsed = false;
+        writeState(s);
+        window.electronAPI.expandWindow(s.y);
+      });
+
+      $('#collapse-btn').addEventListener('click', () => {
+        const s = readState();
+        s.collapsed = true;
+        writeState(s);
+        window.electronAPI.collapseWindow(s.y);
+      });
+
+      $('#tab-quit-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        window.close();
+      });
+    }
+
+    initCollapse();
+
+    // ---- Existing app code ----
+
+    const chatLog = $('#chat-log');
+    const chatInput = $('#chat-input');
+    const sendBtn = $('#send-btn');
+    const statusDot = $('#status-dot');
+    const statusText = $('#status-text');
+    const stopBtn = $('#stop-control-btn');
+    const controlPanel = $('#control-panel');
+    const planSummary = $('#plan-summary');
+    const planActionBox = $('#plan-action-box');
+    const planActionType = $('#plan-action-type');
+    const planActionDetail = $('#plan-action-detail');
+    const planReason = $('#plan-reason');
+    const planRisk = $('#plan-risk');
+    const planNoneBox = $('#plan-none-box');
+    const planButtons = $('#plan-buttons');
+    const runPlanBtn = $('#run-plan-btn');
+    const cancelPlanBtn = $('#cancel-plan-btn');
+    const planActionButtons = $('#plan-action-buttons');
+    const actionInputArea = $('#action-input-area');
+    const actionInputLabel = $('#action-input-label');
+    const actionInputFields = $('#action-input-fields');
+    const actionResult = $('#action-result');
+    const runActionBtn = $('#run-action-btn');
+    const cancelActionBtn = $('#cancel-action-btn');
+    const highRiskWarning = $('#high-risk-warning');
+
+    let currentMode = 'ask';
+    let currentAction = null;
+    let currentPlan = null;
+
+    function setMode(mode) {
+      currentMode = mode;
+      statusDot.className = `status-${mode}`;
+      const labels = {
+        ask: 'Ask Mode',
+        screen: 'Screen Mode',
+        control_pending: 'Control Mode Pending',
+        control_running: 'Control Mode Running',
+      };
+      statusText.textContent = labels[mode] || mode;
+      if (mode === 'ask' || mode === 'screen') {
+        stopBtn.classList.add('hidden');
+        controlPanel.classList.add('hidden');
+      } else {
+        stopBtn.classList.remove('hidden');
+        controlPanel.classList.remove('hidden');
+      }
+    }
+
+    stopBtn.addEventListener('click', () => {
+      setMode('ask');
+      resetControlPanel();
+    });
+
+    function resetControlPanel() {
+      planActionBox.classList.add('hidden');
+      planNoneBox.classList.add('hidden');
+      planButtons.classList.add('hidden');
+      planActionButtons.classList.add('hidden');
+      actionInputArea.classList.add('hidden');
+      actionResult.classList.add('hidden');
+      currentAction = null;
+      currentPlan = null;
+      planSummary.textContent = 'Analyzing screen...';
+    }
+
+    function addMessage(role, text) {
+      const el = document.createElement('div');
+      el.className = `message ${role}`;
+      el.textContent = text;
+      chatLog.appendChild(el);
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+
+    async function startControl() {
+      setMode('screen');
+      addMessage('user', 'Control Mac');
+      controlPanel.classList.remove('hidden');
+
+      const loading = document.createElement('div');
+      loading.className = 'message assistant loading';
+      loading.textContent = 'Analyzing screen for action plan...';
+      chatLog.appendChild(loading);
+
+      try {
+        const plan = await window.electronAPI.controlPlan();
+        loading.remove();
+
+        if (plan.success) {
+          addMessage('assistant', `Summary: ${plan.summary}\nSuggested: ${plan.recommended_action.reason}`);
+        } else {
+          addMessage('assistant', `Plan failed: ${plan.summary}`);
+        }
+
+        displayPlan(plan);
+      } catch (err) {
+        loading.remove();
+        addMessage('assistant', `Error: ${err.message}`);
+        setMode('ask');
+      }
+    }
+
+    function displayPlan(plan) {
+      currentPlan = plan;
+      planSummary.textContent = plan.summary || 'No summary available.';
+
+      const action = plan.recommended_action;
+      if (action.type === 'none') {
+        planActionBox.classList.add('hidden');
+        planNoneBox.classList.remove('hidden');
+        planButtons.classList.add('hidden');
+      } else {
+        planNoneBox.classList.add('hidden');
+        planActionBox.classList.remove('hidden');
+        planActionType.textContent = action.type;
+        planActionDetail.textContent = formatParams(action.type, action.params);
+        planReason.textContent = action.reason || '';
+        planRisk.textContent = `Risk: ${action.risk}`;
+        planRisk.className = `plan-risk risk-${action.risk}`;
+        planButtons.classList.remove('hidden');
+      }
+
+      planActionButtons.classList.remove('hidden');
+      setMode('control_pending');
+    }
+
+    function formatParams(type, params) {
+      if (!params || Object.keys(params).length === 0) return '';
+      switch (type) {
+        case 'click': return `(${params.x || 0}, ${params.y || 0})`;
+        case 'type': return `"${(params.text || '').slice(0, 60)}"`;
+        case 'hotkey': return (params.keys || []).join(' + ');
+        case 'open_app': return params.name || '';
+        case 'run_command': return `$ ${params.command || ''}`;
+        default: return JSON.stringify(params);
+      }
+    }
+
+    runPlanBtn.addEventListener('click', async () => {
+      if (!currentPlan || !currentPlan.recommended_action) return;
+      const action = currentPlan.recommended_action;
+
+      if (action.risk === 'high') {
+        const confirm = prompt('This is a high-risk action. Type CONFIRM to proceed:');
+        if (confirm !== 'CONFIRM') return;
+      }
+
+      planButtons.classList.add('hidden');
+      actionResult.classList.remove('hidden');
+      actionResult.textContent = 'Running...';
+      setMode('control_running');
+
+      try {
+        const result = await window.electronAPI.runAction(action.type, action.params);
+        if (result.success) {
+          actionResult.textContent = `Done: ${result.message}`;
+          addMessage('assistant', `Action ${action.type}: ${result.message}`);
+        } else {
+          actionResult.textContent = `Failed: ${result.message}`;
+          addMessage('assistant', `Action failed: ${result.message}`);
+          if (currentPlan) planButtons.classList.remove('hidden');
+        }
+      } catch (err) {
+        actionResult.textContent = `Error: ${err.message}`;
+        addMessage('assistant', `Error: ${err.message}`);
+      }
+      setMode('control_pending');
+    });
+
+    cancelPlanBtn.addEventListener('click', () => {
+      resetControlPanel();
+      setMode('ask');
+    });
+
+    const ACTION_INPUTS = {
+      click: {
+        label: 'Click at coordinates',
+        fields: `
+          <div class="field-row">
+            <label>X:</label><input type="number" id="action-param-x" class="action-param" value="0" />
+            <label>Y:</label><input type="number" id="action-param-y" class="action-param" value="0" />
+          </div>
+        `,
+        getParams: () => ({
+          x: parseInt($('#action-param-x').value, 10),
+          y: parseInt($('#action-param-y').value, 10),
+        }),
+      },
+      type: {
+        label: 'Type text',
+        fields: `
+          <div class="field-row">
+            <label>Text:</label>
+            <textarea id="action-param-text" class="action-param" rows="2" placeholder="Enter text to type..."></textarea>
+          </div>
+        `,
+        getParams: () => ({ text: $('#action-param-text').value }),
+      },
+      hotkey: {
+        label: 'Press hotkey combination',
+        fields: `
+          <div class="field-row">
+            <label>Keys (comma-separated):</label>
+            <input type="text" id="action-param-keys" class="action-param" placeholder="e.g. command, shift, p" />
+          </div>
+        `,
+        getParams: () => ({
+          keys: $('#action-param-keys').value.split(',').map((k) => k.trim()).filter(Boolean),
+        }),
+      },
+      open_app: {
+        label: 'Open application',
+        fields: `
+          <div class="field-row">
+            <label>App name:</label>
+            <input type="text" id="action-param-name" class="action-param" placeholder="e.g. Safari" />
+          </div>
+        `,
+        getParams: () => ({ name: $('#action-param-name').value }),
+      },
+      run_command: {
+        label: 'Run terminal command',
+        fields: `
+          <div class="field-row">
+            <label>Command:</label>
+            <input type="text" id="action-param-command" class="action-param" placeholder="e.g. ls -la" />
+          </div>
+          <div class="field-note">sudo, rm, and dangerous commands are blocked.</div>
+        `,
+        getParams: () => ({ command: $('#action-param-command').value }),
+      },
+    };
+
+    $$('.action-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        const config = ACTION_INPUTS[action];
+        if (!config) return;
+        currentAction = action;
+        actionInputLabel.textContent = config.label;
+        actionInputFields.innerHTML = config.fields;
+        actionInputArea.classList.remove('hidden');
+        actionResult.classList.add('hidden');
+        highRiskWarning.classList.add('hidden');
+      });
+    });
+
+    cancelActionBtn.addEventListener('click', () => {
+      actionInputArea.classList.add('hidden');
+      currentAction = null;
+    });
+
+    runActionBtn.addEventListener('click', async () => {
+      if (!currentAction) return;
+      const config = ACTION_INPUTS[currentAction];
+      if (!config) return;
+      const params = config.getParams();
+      actionInputArea.classList.add('hidden');
+      actionResult.classList.remove('hidden');
+      actionResult.textContent = 'Running...';
+      setMode('control_running');
+
+      try {
+        const result = await window.electronAPI.runAction(currentAction, params);
+        if (result.success) {
+          actionResult.textContent = `Done: ${result.message}`;
+          addMessage('assistant', `Action: ${currentAction} — ${result.message}`);
+        } else {
+          actionResult.textContent = `Failed: ${result.message}`;
+          addMessage('assistant', `Action failed: ${result.message}`);
+        }
+      } catch (err) {
+        actionResult.textContent = `Error: ${err.message}`;
+        addMessage('assistant', `Error: ${err.message}`);
+      }
+      setMode('control_pending');
+      currentAction = null;
+    });
+
+    document.getElementById('control-mac-btn').addEventListener('click', startControl);
+
+    $$('.preset-btn:not(.control-btn):not(.opencode-btn)').forEach((btn) => {
+      btn.addEventListener('click', () => ask(btn.dataset.prompt));
+    });
+
+    sendBtn.addEventListener('click', () => {
+      ask(chatInput.value);
+      chatInput.value = '';
+    });
+
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        sendBtn.click();
+      }
+    });
+
+    const opencodeArea = $('#opencode-area');
+    const opencodePath = $('#opencode-path');
+    const opencodeStatus = $('#opencode-status');
+    const opencodeStatusText = $('#opencode-status-text');
+    const opencodeOutput = $('#opencode-output');
+    const opencodeOutputText = $('#opencode-output-text');
+    const opencodeSavePath = $('#opencode-save-path');
+
+    const savedPath = localStorage.getItem('sompter_opencode_path');
+    if (savedPath) opencodePath.value = savedPath;
+
+    opencodeSavePath.addEventListener('click', () => {
+      localStorage.setItem('sompter_opencode_path', opencodePath.value);
+      opencodeStatusText.textContent = 'Path saved.';
+      opencodeStatus.classList.remove('hidden');
+      setTimeout(() => opencodeStatus.classList.add('hidden'), 2000);
+    });
+
+    const opencodeReview = $('#opencode-review');
+    const reviewOutput = $('#review-output');
+    const reviewOutputText = $('#review-output-text');
+    const reviewTestArea = $('#review-test-area');
+    const reviewTestCommand = $('#review-test-command');
+    let lastProjectPath = '';
+    let lastPromptFile = '';
+
+    function showReviewOutput(text) {
+      reviewOutput.classList.remove('hidden');
+      reviewOutputText.textContent = text;
+      addMessage('assistant', text.slice(0, 500));
+    }
+
+    document.getElementById('review-status-btn').addEventListener('click', async () => {
+      if (!lastProjectPath) return;
+      try {
+        const result = await window.electronAPI.projectStatus(lastProjectPath);
+        if (result.success) {
+          showReviewOutput(`Changed files:\n${result.files}`);
+        } else {
+          showReviewOutput(`Error: ${result.message}`);
+        }
+      } catch (err) {
+        showReviewOutput(`Error: ${err.message}`);
+      }
+    });
+
+    document.getElementById('review-diff-btn').addEventListener('click', async () => {
+      if (!lastProjectPath) return;
+      try {
+        const result = await window.electronAPI.projectDiff(lastProjectPath);
+        if (result.success) {
+          showReviewOutput(`Diff summary:\n${result.stat}\n\nFull diff:\n${result.diff}`);
+        } else {
+          showReviewOutput(`Error: ${result.message}`);
+        }
+      } catch (err) {
+        showReviewOutput(`Error: ${err.message}`);
+      }
+    });
+
+    document.getElementById('review-test-btn').addEventListener('click', () => {
+      reviewTestArea.classList.toggle('hidden');
+    });
+
+    document.getElementById('review-test-run-btn').addEventListener('click', async () => {
+      if (!lastProjectPath) return;
+      const cmd = reviewTestCommand.value.trim();
+      if (!cmd) return;
+      reviewTestArea.classList.add('hidden');
+      try {
+        const result = await window.electronAPI.runTest(lastProjectPath, cmd);
+        if (result.success) {
+          showReviewOutput(`Tests passed:\n${result.message}`);
+        } else {
+          showReviewOutput(`Tests failed:\n${result.message}`);
+        }
+      } catch (err) {
+        showReviewOutput(`Error: ${err.message}`);
+      }
+    });
+
+    document.getElementById('review-open-btn').addEventListener('click', async () => {
+      if (!lastProjectPath) return;
+      await window.electronAPI.openFolder(lastProjectPath);
+    });
+
+    document.getElementById('review-prompt-btn').addEventListener('click', async () => {
+      if (lastPromptFile) {
+        await window.electronAPI.openFile(lastPromptFile);
+      } else if (lastProjectPath) {
+        await window.electronAPI.openFolder(lastProjectPath);
+      }
+    });
+
+    document.getElementById('opencode-btn').addEventListener('click', async () => {
+      const projectPath = opencodePath.value.trim();
+      if (!projectPath) {
+        addMessage('assistant', 'Please set a project path first.');
+        return;
+      }
+
+      opencodeArea.classList.remove('hidden');
+      opencodeOutput.classList.add('hidden');
+      opencodeReview.classList.add('hidden');
+      opencodeStatus.classList.remove('hidden');
+      opencodeStatusText.textContent = 'OpenCode Running...';
+      opencodeStatusText.className = 'opencode-status-running';
+      addMessage('user', 'Fix Project with OpenCode');
+      lastProjectPath = projectPath;
+      lastPromptFile = '';
+
+      try {
+        const result = await window.electronAPI.opencodeRun(projectPath, 'Fix the issue visible on my screen and any code problems in this project.');
+        opencodeOutput.classList.remove('hidden');
+        opencodeReview.classList.remove('hidden');
+
+        if (result.fallback_saved) {
+          opencodeStatusText.textContent = 'OpenCode Fallback';
+          opencodeStatusText.className = 'opencode-status-warn';
+          opencodeOutputText.textContent = result.output;
+          addMessage('assistant', result.output);
+          lastPromptFile = result.prompt_file || '';
+        } else if (result.success) {
+          opencodeStatusText.textContent = 'OpenCode Done';
+          opencodeStatusText.className = 'opencode-status-done';
+          opencodeOutputText.textContent = result.output || '(no output)';
+          addMessage('assistant', `OpenCode completed:\n${(result.output || '').slice(0, 500)}`);
+        } else {
+          opencodeStatusText.textContent = 'OpenCode Error';
+          opencodeStatusText.className = 'opencode-status-error';
+          opencodeOutputText.textContent = result.output || '(no output)';
+          addMessage('assistant', `OpenCode failed:\n${(result.output || '').slice(0, 500)}`);
+        }
+      } catch (err) {
+        opencodeStatusText.textContent = 'OpenCode Error';
+        opencodeStatusText.className = 'opencode-status-error';
+        opencodeOutput.classList.remove('hidden');
+        opencodeOutputText.textContent = `Error: ${err.message}`;
+        addMessage('assistant', `Error: ${err.message}`);
+        opencodeReview.classList.remove('hidden');
+      }
+    });
+
+    async function ask(prompt) {
+      if (!prompt.trim()) return;
+      addMessage('user', prompt);
+      const loading = document.createElement('div');
+      loading.className = 'message assistant loading';
+      loading.textContent = 'Thinking...';
+      chatLog.appendChild(loading);
+      try {
+        const result = await window.electronAPI.ask(prompt);
+        loading.remove();
+        addMessage('assistant', result.success ? result.message : result.message);
+      } catch (err) {
+        loading.remove();
+        addMessage('assistant', `Error: ${err.message}`);
+      }
+    }
+  </script>
+</body>
+</html>

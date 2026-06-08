@@ -1,0 +1,21 @@
+{
+  "name": "sompter-ai",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app/main.js",
+  "scripts": {
+    "dev": "concurrently -n backend,electron,opencode -c cyan,magenta,yellow \".venv/bin/uvicorn backend.server:app --reload --port 8787\" \"npx electron app/main.js\" \"opencode serve --port 4096\"",
+    "backend": ".venv/bin/uvicorn backend.server:app --reload --port 8787",
+    "opencode:serve": "opencode serve --port 4096",
+    "electron": "npx electron app/main.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "concurrently": "^10.0.3",
+    "electron": "^42.3.3"
+  }
+}
