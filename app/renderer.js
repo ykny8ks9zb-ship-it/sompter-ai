@@ -36,6 +36,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Folder selection
   selectFolder: () => ipcRenderer.invoke('selectFolder'),
 
+  // Smart Fix
+  smartFix: (projectPath, projectName, userPrompt) => ipcRenderer.invoke('smartFix', { projectPath, projectName, userPrompt }),
+
   // Global toggle
   onGlobalToggle: (callback) => {
     ipcRenderer.on('global-toggle', () => callback());

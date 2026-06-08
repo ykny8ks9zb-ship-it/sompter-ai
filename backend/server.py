@@ -141,6 +141,13 @@ class OpenCodeRunRequest(BaseModel):
     screenshot_base64: str | None = None
 
 
+class SmartFixRequest(BaseModel):
+    project_path: str
+    project_name: str
+    screenshot_base64: str
+    user_prompt: str | None = None
+
+
 class TestRunRequest(BaseModel):
     project_path: str
     command: str
@@ -785,3 +792,102 @@ async def project_test(req: TestRunRequest):
         return {"success": False, "message": "Test command timed out (120s)"}
     except Exception as e:
         return {"success": False, "message": str(e)}
+
+
+SMARTFIX_SYSTEM_PROMPT = (
+    "You are a senior developer debugging a visible screen issue. "
+    "Look at the screenshot carefully. Identify errors, crashes, visual bugs, or tasks on screen. "
+    "Be specific: name the app, the error message, the line number, or the UI element. "
+    "Respond in 2-4 sentences maximum."
+)
+
+
+@app.post("/api/smartfix/run")
+async def smartfix_run(req: SmartFixRequest):
+    project_path = os.path.abspath(os.path.expanduser(req.project_path))
+    err = validate_project_path_fast(project_path)
+    if err:
+        return {"success": False, "screen_summary": "", "opencode_result": err}
+
+    screen_summary = ""
+    try:
+        screen_summary = call_ai(
+            req.screenshot_base64,
+            "Describe exactly what's on this screen in 2-4 sentences. Focus on errors, crashes, or tasks visible.",
+            SMARTFIX_SYSTEM_PROMPT,
+        )
+    except Exception as e:
+        screen_summary = f"(Screenshot analysis unavailable: {e})"
+
+    lines = [
+        f"You are fixing this local project: {req.project_name or os.path.basename(project_path)}",
+        f"Path: {project_path}",
+        "",
+        "Visible screen problem:",
+        screen_summary,
+    ]
+    if req.user_prompt:
+        lines += ["", "User instruction:", req.user_prompt]
+
+    lines += [
+        "",
+        "Task:",
+        "Find the likely source of the issue, make safe code changes only, and run safe checks if available.",
+        "Do not delete files. Do not use sudo.",
+        "Do not touch .env, auth.json, passwords, API keys, or secrets.",
+        "Do not install packages unless clearly necessary; if needed, explain instead of running.",
+        "After changes, summarize what changed and what to test.",
+    ]
+    opencode_prompt = "\n".join(lines)
+
+    try:
+        oc_result = run_opencode_attach(project_path, opencode_prompt)
+        return {
+            "success": oc_result.get("success", False),
+            "screen_summary": screen_summary,
+            "opencode_result": oc_result,
+            "fallback": oc_result.get("fallback_saved", False),
+        }
+    except SessionNotFoundError as e:
+        fallback = save_opencode_prompt(project_path, opencode_prompt, raw_error=str(e))
+        return {
+            "success": True,
+            "screen_summary": screen_summary,
+            "opencode_result": fallback,
+            "fallback": True,
+        }
+    except FileNotFoundError:
+        fallback = save_opencode_prompt(project_path, opencode_prompt)
+        return {
+            "success": True,
+            "screen_summary": screen_summary,
+            "opencode_result": fallback,
+            "fallback": True,
+        }
+    except subprocess.TimeoutExpired:
+        fallback = save_opencode_prompt(project_path, opencode_prompt, raw_error="OpenCode timed out (180s).")
+        return {
+            "success": True,
+            "screen_summary": screen_summary,
+            "opencode_result": fallback,
+            "fallback": True,
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "screen_summary": screen_summary,
+            "opencode_result": {"success": False, "output": f"Smart Fix error: {str(e)}"},
+            "fallback": False,
+        }
+
+
+def validate_project_path_fast(path: str) -> str | None:
+    if not os.path.isdir(path):
+        return f"Project path does not exist or is not a directory: {path}"
+    home = os.path.expanduser("~")
+    if not path.startswith(home):
+        return "Project path must be inside your home directory for safety."
+    for comp in SUSPICIOUS_PATH_COMPONENTS:
+        if path.startswith(comp):
+            return f"Blocked: suspicious path component '{comp}'"
+    return None

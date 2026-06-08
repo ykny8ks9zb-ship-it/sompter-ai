@@ -159,6 +159,17 @@ Save and quickly switch between coding projects. In the **Fix Project with OpenC
 
 On launch, the last-used or default project is automatically loaded. Profiles persist in localStorage.
 
+## Smart Fix
+
+Click **Smart Fix** (green button) to run a one-click fix flow:
+1. Takes a screenshot of your current screen
+2. AI analyzes the visible error/problem
+3. Builds a contextual OpenCode task with the screen context + project profile
+4. Runs OpenCode against your selected project
+5. Shows Review Changes / Show Diff / Run Tests
+
+Requires a saved project profile. Works with or without an active OpenCode serve instance (falls back to prompt file saving).
+
 ## Architecture
 
 - `app/` — Electron frontend (main, renderer, HTML, CSS)

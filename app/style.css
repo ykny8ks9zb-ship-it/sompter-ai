@@ -1180,3 +1180,18 @@ textarea.action-param {
   font-size: 10px;
   padding: 2px 0;
 }
+
+/* ---- Smart Fix Button ---- */
+
+.smartfix-btn {
+  border-color: #22c55e !important;
+  color: #4ade80 !important;
+  grid-column: 1 / -1;
+  font-weight: 700 !important;
+}
+
+.smartfix-btn:hover {
+  background: #22c55e !important;
+  border-color: #16a34a !important;
+  color: #fff !important;
+}

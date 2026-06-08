@@ -645,6 +645,7 @@
       { id: 'explain_screen', label: 'Explain screen', prompt: "Look at the screen and explain what's happening in detail.", mode: 'screen' },
       { id: 'use_web', label: 'Use web', prompt: 'Look at the screen and determine if there is any web-related content. If so, what could be done with it?', mode: 'screen' },
       { id: 'fix_code', label: 'Fix code', prompt: 'Look at the code visible on the screen. Identify any bugs, suggest fixes, and provide improved code.', mode: 'screen' },
+      { id: 'smart_fix', label: 'Smart Fix', prompt: '', mode: 'smartfix' },
       { id: 'control_mac', label: 'Control Mac', prompt: '', mode: 'control' },
       { id: 'opencode_fix', label: 'Fix Project with OpenCode', prompt: 'Fix the issue visible on my screen and any code problems in this project.', mode: 'opencode' },
     ];
@@ -676,6 +677,7 @@
         btn.className = 'preset-btn';
         if (p.mode === 'control') btn.classList.add('control-btn');
         if (p.mode === 'opencode') btn.classList.add('opencode-btn');
+        if (p.mode === 'smartfix') btn.classList.add('smartfix-btn');
         btn.textContent = p.label;
         btn.dataset.presetId = p.id;
         btn.addEventListener('click', () => runPreset(p));
@@ -696,6 +698,9 @@
           break;
         case 'control':
           await startControl();
+          break;
+        case 'smartfix':
+          await smartFix();
           break;
         case 'opencode':
           await runOpencodeWithPrompt(preset.prompt);
@@ -821,6 +826,69 @@
         addMessage('assistant', `Error: ${err.message}`);
         opencodeReview.classList.remove('hidden');
         addHistoryEntry('opencode', promptText, err.message, 'failed');
+      }
+    }
+
+    async function smartFix() {
+      const active = getActiveProfile();
+      const projectPath = active ? active.path : $('#opencode-path').value.trim();
+      if (!projectPath) {
+        addMessage('assistant', 'Please select or save a project first.');
+        return;
+      }
+
+      opencodeArea.classList.remove('hidden');
+      opencodeOutput.classList.add('hidden');
+      opencodeReview.classList.add('hidden');
+      opencodeStatus.classList.remove('hidden');
+      opencodeStatusText.textContent = 'Smart Fix: Reading screen...';
+      opencodeStatusText.className = 'opencode-status-running';
+      addMessage('user', 'Smart Fix');
+      lastProjectPath = projectPath;
+      lastPromptFile = '';
+
+      try {
+        opencodeStatusText.textContent = 'Smart Fix: Reading screen & building task...';
+        const result = await window.electronAPI.smartFix(projectPath, active ? active.name : '', '');
+
+        if (result.screen_summary) {
+          addMessage('assistant', `Screen: ${result.screen_summary}`);
+        }
+
+        opencodeOutput.classList.remove('hidden');
+        opencodeReview.classList.remove('hidden');
+
+        const oc = result.opencode_result || {};
+        const outputText = oc.output || '(no output)';
+
+        if (result.fallback || oc.fallback_saved) {
+          opencodeStatusText.textContent = 'Smart Fix (Fallback)';
+          opencodeStatusText.className = 'opencode-status-warn';
+          opencodeOutputText.textContent = outputText;
+          addMessage('assistant', outputText);
+          lastPromptFile = oc.prompt_file || '';
+          addHistoryEntry('opencode', 'Smart Fix: ' + (result.screen_summary || ''), outputText, 'warn');
+        } else if (oc.success) {
+          opencodeStatusText.textContent = 'Smart Fix Done';
+          opencodeStatusText.className = 'opencode-status-done';
+          opencodeOutputText.textContent = outputText;
+          addMessage('assistant', `Smart Fix completed:\n${outputText.slice(0, 500)}`);
+          addHistoryEntry('opencode', 'Smart Fix: ' + (result.screen_summary || ''), outputText.slice(0, 500), 'success');
+        } else {
+          opencodeStatusText.textContent = 'Smart Fix Error';
+          opencodeStatusText.className = 'opencode-status-error';
+          opencodeOutputText.textContent = outputText;
+          addMessage('assistant', `Smart Fix failed:\n${outputText.slice(0, 500)}`);
+          addHistoryEntry('opencode', 'Smart Fix: ' + (result.screen_summary || ''), outputText, 'failed');
+        }
+      } catch (err) {
+        opencodeStatusText.textContent = 'Smart Fix Error';
+        opencodeStatusText.className = 'opencode-status-error';
+        opencodeOutput.classList.remove('hidden');
+        opencodeOutputText.textContent = `Error: ${err.message}`;
+        addMessage('assistant', `Error: ${err.message}`);
+        opencodeReview.classList.remove('hidden');
+        addHistoryEntry('opencode', 'Smart Fix', err.message, 'failed');
       }
     }
 

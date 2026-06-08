@@ -135,6 +135,20 @@ ipcMain.handle('testOpencode', async () => {
   }
 });
 
+ipcMain.handle('smartFix', async (_event, { projectPath, projectName, userPrompt }) => {
+  try {
+    const base64 = await takeScreenshot();
+    const response = await fetch(`${BACKEND}/api/smartfix/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_path: projectPath, project_name: projectName, screenshot_base64: base64, user_prompt: userPrompt }),
+    });
+    return await response.json();
+  } catch (err) {
+    return { success: false, screen_summary: '', opencode_result: { success: false, output: `Error: ${err.message}` } };
+  }
+});
+
 async function takeScreenshot() {
   const p = `/tmp/sompter_screenshot_${Date.now()}.png`;
   await new Promise((resolve, reject) => {
