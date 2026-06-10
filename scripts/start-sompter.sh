@@ -55,6 +55,14 @@ else
   echo "   Start it: ollama serve"
 fi
 
+# Check Playwright availability for browser control mode
+echo ""
+if "$PROJECT_DIR/.venv/bin/python3" -c "import playwright" 2>/dev/null; then
+  echo "✅ Playwright is available (browser control mode ready)"
+else
+  echo "⚠️  Playwright not found. Install: pip install playwright && python -m playwright install chromium"
+fi
+
 # Start Electron
 echo "🚀 Starting Electron sidebar..."
 cd "$PROJECT_DIR"

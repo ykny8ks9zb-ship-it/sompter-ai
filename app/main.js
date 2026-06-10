@@ -107,6 +107,15 @@ function updateTrayMenu(health) {
         }
       },
     },
+    {
+      label: 'About Sompter AI',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.webContents.send('menu-action', 'about');
+        }
+      },
+    },
     { type: 'separator' },
     { label: `Backend ${backendOk}   Ollama ${ollamaOk}   OpenCode ${opencodeOk}`, enabled: false },
     { type: 'separator' },
@@ -229,15 +238,20 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  const SAFE_MODE = process.argv.includes('--safe-mode') || process.env.SAFE_MODE === '1';
+
   // Detect project root directory for service launching
   const projectRoot = getProjectRoot();
-  if (app.isPackaged) {
+  if (app.isPackaged && !SAFE_MODE) {
     console.log('Packaged mode — starting services...');
     startBundledServices(projectRoot);
   }
 
   createWindow();
-  createTray();
+
+  if (!SAFE_MODE) {
+    createTray();
+  }
 
   const prefs = getMenuBarPrefs();
   if (!prefs.showInDock) {
@@ -301,6 +315,10 @@ app.on('will-quit', () => {
   globalShortcut.unregisterAll();
   if (trayPollInterval) clearInterval(trayPollInterval);
   if (tray) tray.destroy();
+  // Stop Playwright browser if running
+  try {
+    fetch(`${BACKEND}/api/browser/stop`, { method: 'POST' }).catch(() => {});
+  } catch {}
 });
 
 app.on('window-all-closed', () => {
@@ -504,6 +522,19 @@ ipcMain.handle('openFile', async (_event, { filePath }) => {
   }
 });
 
+ipcMain.handle('openREADME', async () => {
+  const projectRoot = getProjectRoot();
+  const readmePath = path.join(projectRoot, 'README.md');
+  try {
+    await new Promise((resolve, reject) => {
+      execFile('open', [readmePath], (err) => (err ? reject(err) : resolve()));
+    });
+    return { success: true, message: 'Opened' };
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
 ipcMain.handle('openPrivacySettings', async (_event, pane) => {
   const url = `x-apple.systempreferences:com.apple.preference.security?${pane}`;
   try {
@@ -519,6 +550,29 @@ ipcMain.handle('openPrivacySettings', async (_event, pane) => {
 ipcMain.handle('runAction', async (_event, { action, params }) => {
   try {
     const response = await fetch(`${BACKEND}/api/action/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    const data = await response.json();
+    return data;
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('runBrowserAction', async (_event, { action, params }) => {
+  const BROWSER_ENDPOINTS = {
+    browser_click: '/api/browser/click',
+    browser_type: '/api/browser/type',
+    browser_navigate: '/api/browser/navigate',
+    browser_evaluate: '/api/browser/evaluate',
+    browser_screenshot: '/api/browser/screenshot',
+  };
+  const endpoint = BROWSER_ENDPOINTS[action];
+  if (!endpoint) return { success: false, message: `Unknown browser action: ${action}` };
+  try {
+    const response = await fetch(`${BACKEND}${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
@@ -696,5 +750,92 @@ ipcMain.handle('saveMenuBarPrefs', async (_event, prefs) => {
 ipcMain.handle('showNotification', async (_event, { title, body }) => {
   sendNotification(title, body);
   return { success: true };
+});
+
+ipcMain.handle('appReset', async () => {
+  try {
+    const r = await fetch(`${BACKEND}/api/app/reset`, { method: 'POST' });
+    return await r.json();
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('appExportLogs', async () => {
+  try {
+    const r = await fetch(`${BACKEND}/api/app/export_logs`, { method: 'POST' });
+    const data = await r.json();
+    if (data.success) {
+      // Save to desktop
+      const desktop = app.getPath('desktop');
+      const filePath = path.join(desktop, data.filename);
+      const buf = Buffer.from(data.data, 'base64');
+      fs.writeFileSync(filePath, buf);
+      return { success: true, path: filePath };
+    }
+    return data;
+  } catch (err) {
+    return { success: false, message: `Error: ${err.message}` };
+  }
+});
+
+ipcMain.handle('appSafeMode', async () => {
+  return { success: true, safe_mode: process.argv.includes('--safe-mode') || process.env.SAFE_MODE === '1' };
+});
+
+// ---- About / Version IPC ----
+
+ipcMain.handle('getAboutInfo', async () => {
+  try {
+    const r = await fetch(`${BACKEND}/api/about`);
+    const data = await r.json();
+    data.build_type = app.isPackaged ? 'packaged' : 'dev';
+    return data;
+  } catch (err) {
+    // Fallback: read version and commit locally
+    let version = '1.0.0';
+    let commit = 'unknown';
+    try {
+      const pkgPath = path.join(__dirname, '..', 'package.json');
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+      version = pkg.version || version;
+    } catch { }
+    try {
+      const result = require('child_process').execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: path.join(__dirname, '..'), timeout: 3000, encoding: 'utf-8' });
+      commit = result.trim();
+    } catch { }
+    return {
+      app_name: 'Sompter AI',
+      version,
+      commit,
+      build_type: app.isPackaged ? 'packaged' : 'dev',
+      provider_mode: 'unknown',
+      ollama_available: false,
+      opencode_available: false,
+      ollama_model: '-',
+      gemini_model: '-',
+      openai_model: '-',
+      backend_url: 'http://localhost:8787',
+      opencode_port: 4096,
+      release_notes: [
+        { title: 'Browser Control Mode (Playwright)', step: '35' },
+        { title: 'About / Release Notes Panel', step: '34' },
+        { title: 'Final Release Test', step: '33' },
+        { title: 'First-Run Onboarding', step: '32' },
+        { title: 'macOS App Packaging', step: '31' },
+        { title: 'Menu Bar App + Notifications', step: '30' },
+        { title: 'Service Controls / Restart Panel', step: '29' },
+        { title: 'Provider + Model Settings', step: '28' },
+        { title: 'Diagnostics / Bug Report Export', step: '27' },
+        { title: 'AI Run Snapshots + Undo Safety', step: '26' },
+        { title: 'Smart Fix Flow', step: '25' },
+        { title: 'Project Profiles / Quick Switch', step: '24' },
+        { title: 'Conversation History', step: '23' },
+        { title: 'Custom Prompt Buttons', step: '22' },
+        { title: 'Setup Permissions Checker', step: '21' },
+        { title: 'Mac App Launcher', step: '20' },
+      ],
+    };
+  }
 });
 

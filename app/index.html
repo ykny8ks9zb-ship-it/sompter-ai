@@ -33,13 +33,20 @@
     <div id="presets">
       <div id="preset-buttons"></div>
       <div id="preset-actions">
-        <button class="preset-action-btn setup-btn" id="prompts-edit-btn">✏️ Prompts</button>
-        <button class="preset-action-btn setup-btn" id="history-btn">🕘 History</button>
-        <button class="preset-action-btn setup-btn" id="models-btn">🧠 Models</button>
-        <button class="preset-action-btn setup-btn" id="services-btn">🛠 Services</button>
-        <button class="preset-action-btn setup-btn" id="diagnostics-btn">🔬 Diag</button>
-        <button class="preset-action-btn setup-btn" id="setup-btn">⚙ Setup</button>
+        <button class="preset-action-btn setup-btn" id="smartfix-btn">🔧 Smart Fix</button>
+        <button class="preset-action-btn setup-btn" id="gear-btn">⚙</button>
       </div>
+    </div>
+
+    <div id="gear-popup" class="hidden">
+      <button class="gear-item" id="gear-prompts">✏️ Prompts</button>
+      <button class="gear-item" id="gear-history">🕘 History</button>
+      <button class="gear-item" id="gear-models">🧠 Models</button>
+      <button class="gear-item" id="gear-services">🛠 Services</button>
+      <button class="gear-item" id="gear-diagnostics">🔬 Diagnostics</button>
+      <button class="gear-item" id="gear-setup">⚙ Setup</button>
+      <button class="gear-item" id="gear-onboarding">📖 Setup Guide</button>
+      <button class="gear-item" id="gear-about">ℹ️ About</button>
     </div>
 
     <div id="prompts-panel" class="hidden">
@@ -148,6 +155,16 @@
 
       <div id="setup-onboarding-row">
         <button class="setup-btn" id="setup-reopen-onboarding-btn">📖 Reopen Setup Guide</button>
+      </div>
+      <div id="setup-about-row">
+        <button class="setup-btn" id="setup-about-btn">ℹ️ About Sompter AI</button>
+      </div>
+      <div id="setup-app-row">
+        <button class="setup-btn" id="setup-reset-btn">🗑 Reset App Data</button>
+        <button class="setup-btn" id="setup-export-btn">📤 Export Logs</button>
+      </div>
+      <div id="setup-safe-row">
+        <span class="setup-label" id="setup-safe-mode-label">🛡️ Safe Mode: OFF</span>
       </div>
 
       <div id="setup-result" class="hidden"></div>
@@ -364,6 +381,49 @@
       </div>
     </div>
 
+    <div id="about-panel" class="hidden">
+      <div id="about-header">
+        <span>About Sompter AI</span>
+        <button id="about-close-btn" class="small-btn">✕</button>
+      </div>
+      <div id="about-content">
+        <div id="about-info">
+          <div class="about-row"><span class="about-label">App:</span><span class="about-value" id="about-app-name">—</span></div>
+          <div class="about-row"><span class="about-label">Version:</span><span class="about-value" id="about-version">—</span></div>
+          <div class="about-row"><span class="about-label">Commit:</span><span class="about-value" id="about-commit">—</span></div>
+          <div class="about-row"><span class="about-label">Build:</span><span class="about-value" id="about-build-type">—</span></div>
+          <div class="about-row"><span class="about-label">Backend:</span><span class="about-value" id="about-backend-url">—</span></div>
+          <div class="about-row"><span class="about-label">OpenCode:</span><span class="about-value" id="about-opencode-port">—</span></div>
+          <div class="about-row"><span class="about-label">Provider:</span><span class="about-value" id="about-provider-mode">—</span></div>
+          <div class="about-row"><span class="about-label">Ollama:</span><span class="about-value" id="about-ollama-model">—</span></div>
+          <div class="about-row"><span class="about-label">Gemini:</span><span class="about-value" id="about-gemini-model">—</span></div>
+          <div class="about-row"><span class="about-label">OpenAI:</span><span class="about-value" id="about-openai-model">—</span></div>
+        </div>
+        <div id="about-release-notes">
+          <div id="about-release-title">Release Notes</div>
+          <div id="about-release-list"></div>
+        </div>
+        <div id="about-known-issues">
+          <div id="about-known-title">⚠️ Known Issues</div>
+          <ul id="about-known-list">
+            <li>OpenCode serve must be started separately or via Services panel</li>
+            <li>First-time Playwright browser download (~190MB) on first Browser Control use</li>
+            <li>Ollama must be running locally (install from <a href="#" id="about-ollama-link">ollama.ai</a>)</li>
+            <li>Screen Recording permission required for screenshots</li>
+            <li>Accessibility permission required for OS control actions</li>
+            <li>Packaged .app may need Gatekeeper override on first launch</li>
+          </ul>
+        </div>
+      </div>
+      <div id="about-buttons">
+        <button class="setup-btn" id="about-copy-btn">📋 Copy Info</button>
+        <button class="setup-btn" id="about-readme-btn">📖 Open README</button>
+        <button class="setup-btn" id="about-diag-btn">🔬 Diagnostics</button>
+        <button class="setup-btn test-btn" id="about-health-btn">❤️ Check Health</button>
+      </div>
+      <div id="about-result" class="hidden"></div>
+    </div>
+
     <div id="services-panel" class="hidden">
       <div id="services-header">
         <span>Service Controls</span>
@@ -391,7 +451,7 @@
           <span class="services-status" id="srv-opencode-status"></span>
         </div>
         <div class="services-provider-info" id="services-provider-info"></div>
-        <div class="services-output" id="services-output" class="hidden"></div>
+        <div id="services-output" class="services-output hidden"></div>
       </div>
       <div id="services-buttons">
         <button class="setup-btn services-action-btn" data-action="restart_ollama">🔄 Ollama</button>
@@ -504,6 +564,7 @@
       <span class="footer-item" id="footer-ollama"><span class="health-dot" id="dot-ollama"></span>Ollama</span>
       <span class="footer-item" id="footer-opencode"><span class="health-dot" id="dot-opencode"></span>OpenCode</span>
       <span class="footer-mode" id="footer-mode"></span>
+      <span class="footer-control-mode" id="footer-control-mode" title="Toggle control mode (OS / Browser)"></span>
       <span class="footer-provider" id="footer-provider"></span>
     </div>
   </div>
@@ -603,6 +664,11 @@
         if (confirm('Restart ALL services (Ollama, OpenCode, Backend)?')) {
           await runServiceAction('restart_all');
         }
+      } else if (action === 'about') {
+        aboutVisible = true;
+        aboutPanel.classList.remove('hidden');
+        aboutResult.classList.add('hidden');
+        refreshAboutPanel();
       }
     });
 
@@ -612,6 +678,7 @@
     const dotOpencode = $('#dot-opencode');
     const footerMode = $('#footer-mode');
     const footerProvider = $('#footer-provider');
+    const footerControlMode = $('#footer-control-mode');
 
     function setDot(el, ok) {
       el.className = 'health-dot ' + (ok ? 'dot-on' : 'dot-off');
@@ -625,14 +692,49 @@
         setDot(dotOpencode, h.opencode);
         footerProvider.textContent = h.provider || '';
         footerMode.textContent = h.mode ? (h.mode.charAt(0).toUpperCase() + h.mode.slice(1)) : '';
+        const cm = h.control_mode || 'os';
+        const bv = h.browser_visible === true;
+        footerControlMode.textContent = cm === 'browser'
+          ? (bv ? '\u{1F310} Browser' : '\u{1F5A5} Headless')
+          : '\u{1F5B1} OS';
+        footerControlMode.classList.toggle('browser-mode', cm === 'browser');
+        footerControlMode.dataset.controlMode = cm;
+        footerControlMode.dataset.browserVisible = bv ? 'true' : 'false';
       } catch {
         setDot(dotBackend, false);
         setDot(dotOllama, false);
         setDot(dotOpencode, false);
         footerProvider.textContent = '';
         footerMode.textContent = '';
+        footerControlMode.textContent = '\u{1F5B1} OS';
+        footerControlMode.dataset.controlMode = 'os';
+        footerControlMode.dataset.browserVisible = 'false';
       }
     }
+
+    footerControlMode.addEventListener('click', async () => {
+      const current = footerControlMode.dataset.controlMode || 'os';
+      const currentVisible = footerControlMode.dataset.browserVisible === 'true';
+      let next, nextVisible;
+      if (current === 'os') {
+        next = 'browser';
+        nextVisible = false;
+      } else if (current === 'browser' && !currentVisible) {
+        next = 'browser';
+        nextVisible = true;
+      } else {
+        next = 'os';
+        nextVisible = false;
+      }
+      const r = await window.electronAPI.saveSettings({ control_mode: next, browser_visible: nextVisible });
+      if (r.success) {
+        if (next === 'browser') {
+          // Start browser with correct headless mode
+          await window.electronAPI.runBrowserAction('start', { headless: !nextVisible });
+        }
+        pollHealth();
+      }
+    });
 
     pollHealth();
     setInterval(pollHealth, 10000);
@@ -728,6 +830,15 @@
       chatLog.scrollTop = chatLog.scrollHeight;
     }
 
+    function autoCollapse() {
+      setTimeout(async () => {
+        const st = readState();
+        st.collapsed = true;
+        writeState(st);
+        await window.electronAPI.collapseWindow(st.y);
+      }, 500);
+    }
+
     async function startControl() {
       setMode('screen');
       addMessage('user', 'Control Mac');
@@ -792,6 +903,10 @@
         case 'hotkey': return (params.keys || []).join(' + ');
         case 'open_app': return params.name || '';
         case 'run_command': return `$ ${params.command || ''}`;
+        case 'browser_click': return params.selector || '';
+        case 'browser_type': return `${params.selector || ''} = "${(params.text || '').slice(0, 60)}"`;
+        case 'browser_navigate': return params.url || '';
+        case 'browser_evaluate': return `js: ${(params.js || '').slice(0, 40)}`;
         default: return JSON.stringify(params);
       }
     }
@@ -811,10 +926,16 @@
       setMode('control_running');
 
       try {
-        const result = await window.electronAPI.runAction(action.type, action.params);
+        let result;
+        if (action.type.startsWith('browser_')) {
+          result = await window.electronAPI.runBrowserAction(action.type, action.params);
+        } else {
+          result = await window.electronAPI.runAction(action.type, action.params);
+        }
         if (result.success) {
           actionResult.textContent = `Done: ${result.message}`;
           addMessage('assistant', `Action ${action.type}: ${result.message}`);
+          autoCollapse();
         } else {
           actionResult.textContent = `Failed: ${result.message}`;
           addMessage('assistant', `Action failed: ${result.message}`);
@@ -1174,6 +1295,7 @@
           addMessage('assistant', `Smart Fix completed:\n${outputText.slice(0, 500)}`);
           addHistoryEntry('opencode', 'Smart Fix: ' + (result.screen_summary || ''), outputText.slice(0, 500), 'success');
           window.electronAPI.showNotification('Smart Fix', 'Smart Fix completed successfully');
+          autoCollapse();
         } else {
           opencodeStatusText.textContent = 'Smart Fix Error';
           opencodeStatusText.className = 'opencode-status-error';
@@ -1234,13 +1356,101 @@
     loadPresets();
     renderPresetButtons();
 
-    $('#prompts-edit-btn').addEventListener('click', () => {
+    // ---- Gear popup ----
+    const gearBtn = $('#gear-btn');
+    const gearPopup = $('#gear-popup');
+    let gearOpen = false;
+
+    gearBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      gearOpen = !gearOpen;
+      gearPopup.classList.toggle('hidden', !gearOpen);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (gearOpen && !gearPopup.contains(e.target) && e.target !== gearBtn) {
+        gearOpen = false;
+        gearPopup.classList.add('hidden');
+      }
+    });
+
+    function hideAllPanels() {
+      gearOpen = false;
+      gearPopup.classList.add('hidden');
+    }
+
+    $('#gear-prompts').addEventListener('click', () => {
+      hideAllPanels();
+      hideAllPanelsExcept('prompts-panel');
       promptsPanelVisible = !promptsPanelVisible;
       $('#prompts-panel').classList.toggle('hidden', !promptsPanelVisible);
       if (promptsPanelVisible) {
         closeEditor();
         renderPromptsList();
       }
+    });
+
+    $('#gear-history').addEventListener('click', () => {
+      hideAllPanels();
+      hideAllPanelsExcept('history-panel');
+      historyVisible = !historyVisible;
+      $('#history-panel').classList.toggle('hidden', !historyVisible);
+      if (historyVisible) renderHistory();
+    });
+
+    $('#gear-models').addEventListener('click', () => {
+      hideAllPanels();
+      hideAllPanelsExcept('models-panel');
+      modelsVisible = !modelsVisible;
+      modelsPanel.classList.toggle('hidden', !modelsVisible);
+      if (modelsVisible) {
+        modelsResult.classList.add('hidden');
+        loadModelsSettings();
+      }
+    });
+
+    $('#gear-services').addEventListener('click', () => {
+      hideAllPanels();
+      hideAllPanelsExcept('services-panel');
+      servicesVisible = !servicesVisible;
+      servicesPanel.classList.toggle('hidden', !servicesVisible);
+      if (servicesVisible) {
+        servicesResult.classList.add('hidden');
+        updateServiceStatus();
+      }
+    });
+
+    $('#gear-diagnostics').addEventListener('click', () => {
+      hideAllPanels();
+      hideAllPanelsExcept('diagnostics-panel');
+      diagnosticsVisible = !diagnosticsVisible;
+      diagnosticsPanel.classList.toggle('hidden', !diagnosticsVisible);
+      if (diagnosticsVisible) {
+        refreshDiagnostics();
+      }
+    });
+
+    $('#gear-setup').addEventListener('click', () => {
+      hideAllPanels();
+      hideAllPanelsExcept('setup-panel');
+      setupVisible = !setupVisible;
+      setupPanel.classList.toggle('hidden', !setupVisible);
+      if (setupVisible) {
+        refreshSetupStatus();
+        loadMenuBarPrefs();
+      }
+    });
+
+    $('#gear-onboarding').addEventListener('click', () => {
+      gearOpen = false;
+      gearPopup.classList.add('hidden');
+      if (typeof showOnboarding === 'function') showOnboarding(1);
+    });
+
+    $('#gear-about').addEventListener('click', () => {
+      gearOpen = false;
+      gearPopup.classList.add('hidden');
+      if ($('#setup-about-btn')) $('#setup-about-btn').click();
     });
 
     $('#prompts-close-btn').addEventListener('click', () => {
@@ -1428,13 +1638,7 @@
       $('#history-empty').classList.remove('hidden');
     }
 
-    // ---- History event listeners ----
-    $('#history-btn').addEventListener('click', () => {
-      historyVisible = !historyVisible;
-      $('#history-panel').classList.toggle('hidden', !historyVisible);
-      if (historyVisible) renderHistory();
-    });
-
+    // ---- History close ----
     $('#history-close-btn').addEventListener('click', () => {
       historyVisible = false;
       $('#history-panel').classList.add('hidden');
@@ -1649,24 +1853,32 @@
 
     async function ask(prompt) {
       if (!prompt.trim()) return;
-      const mode = currentMode === 'screen' ? 'screen' : 'chat';
       addMessage('user', prompt);
+      chatInput.value = '';
+
       const loading = document.createElement('div');
       loading.className = 'message assistant loading';
       loading.textContent = 'Thinking...';
       chatLog.appendChild(loading);
+
       try {
         const result = await window.electronAPI.ask(prompt);
         loading.remove();
-        const msg = result.success ? result.message : result.message;
-        addMessage('assistant', msg);
-        addHistoryEntry(mode, prompt, msg, result.success ? 'success' : 'failed');
+        const msg = result.message || result.answer || result;
+        addMessage('assistant', typeof msg === 'string' ? msg : JSON.stringify(msg));
+        addHistoryEntry('chat', prompt, msg, 'success');
+        autoCollapse();
       } catch (err) {
         loading.remove();
         addMessage('assistant', `Error: ${err.message}`);
-        addHistoryEntry(mode, prompt, err.message, 'failed');
+        addHistoryEntry('chat', prompt, err.message, 'failed');
       }
     }
+
+    sendBtn.addEventListener('click', () => {
+      const text = chatInput.value.trim();
+      if (text) ask(text);
+    });
 
     // ---- Setup Panel ----
     const setupPanel = $('#setup-panel');
@@ -1765,8 +1977,6 @@
       setupResult.textContent = msg;
       setTimeout(() => setupResult.classList.add('hidden'), 5000);
     }
-
-    $('#setup-btn').addEventListener('click', toggleSetup);
 
     $('#setup-screen-setting-btn').addEventListener('click', async () => {
       const r = await window.electronAPI.openPrivacySettings('Privacy_ScreenCapture');
@@ -1923,14 +2133,6 @@
         showDiagnosticsResult(false, `Save error: ${err.message}`);
       }
     }
-
-    $('#diagnostics-btn').addEventListener('click', () => {
-      diagnosticsVisible = !diagnosticsVisible;
-      diagnosticsPanel.classList.toggle('hidden', !diagnosticsVisible);
-      if (diagnosticsVisible) {
-        refreshDiagnostics();
-      }
-    });
 
     $('#diagnostics-close-btn').addEventListener('click', () => {
       diagnosticsVisible = false;
@@ -2164,6 +2366,116 @@
       });
     });
 
+    // ---- About Panel ----
+
+    let aboutVisible = false;
+    const aboutPanel = $('#about-panel');
+    const aboutResult = $('#about-result');
+
+    async function refreshAboutPanel() {
+      const data = await window.electronAPI.getAboutInfo();
+      if (!data) return;
+      setText('about-app-name', data.app_name || '—');
+      setText('about-version', data.version || '—');
+      setText('about-commit', data.commit || '—');
+      setText('about-build-type', data.build_type || '—');
+      setText('about-backend-url', data.backend_url || '—');
+      setText('about-opencode-port', data.opencode_port !== undefined ? String(data.opencode_port) : '—');
+      setText('about-provider-mode', data.provider_mode || '—');
+      setText('about-ollama-model', data.ollama_model || '—');
+      setText('about-gemini-model', data.gemini_model || '—');
+      setText('about-openai-model', data.openai_model || '—');
+
+      // Release notes
+      const list = $('#about-release-list');
+      list.innerHTML = '';
+      const notes = data.release_notes || [];
+      notes.forEach(n => {
+        const item = document.createElement('div');
+        item.className = 'about-release-item';
+        item.innerHTML = `<span class="about-release-step">#${n.step}</span> ${n.title}`;
+        list.appendChild(item);
+      });
+    }
+
+    function setText(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    }
+
+    function showAboutResult(ok, msg) {
+      aboutResult.classList.remove('hidden');
+      aboutResult.className = ok ? 'ok' : 'err';
+      aboutResult.textContent = msg;
+      setTimeout(() => aboutResult.classList.add('hidden'), 4000);
+    }
+
+    $('#setup-about-btn').addEventListener('click', () => {
+      aboutVisible = !aboutVisible;
+      aboutPanel.classList.toggle('hidden', !aboutVisible);
+      if (aboutVisible) {
+        aboutResult.classList.add('hidden');
+        refreshAboutPanel();
+      }
+    });
+
+    $('#about-close-btn').addEventListener('click', () => {
+      aboutVisible = false;
+      aboutPanel.classList.add('hidden');
+    });
+
+    $('#about-copy-btn').addEventListener('click', async () => {
+      const data = await window.electronAPI.getAboutInfo();
+      if (!data) return;
+      const lines = [
+        `App: ${data.app_name}`,
+        `Version: ${data.version}`,
+        `Commit: ${data.commit}`,
+        `Build: ${data.build_type}`,
+        `Backend: ${data.backend_url}`,
+        `OpenCode Port: ${data.opencode_port}`,
+        `Provider Mode: ${data.provider_mode}`,
+        `Ollama Model: ${data.ollama_model}`,
+        `Gemini Model: ${data.gemini_model}`,
+        `OpenAI Model: ${data.openai_model}`,
+      ];
+      try {
+        await navigator.clipboard.writeText(lines.join('\n'));
+        showAboutResult(true, 'Copied to clipboard');
+      } catch {
+        showAboutResult(false, 'Copy failed');
+      }
+    });
+
+    $('#about-readme-btn').addEventListener('click', async () => {
+      await window.electronAPI.openREADME();
+    });
+
+    $('#about-diag-btn').addEventListener('click', () => {
+      hideAllPanelsExcept('about-panel');
+      const dp = $('#diagnostics-panel');
+      if (dp) {
+        diagnosticsVisible = true;
+        dp.classList.remove('hidden');
+        diagnosticsResult.classList.add('hidden');
+        refreshDiagnostics();
+      }
+    });
+
+    $('#about-health-btn').addEventListener('click', async () => {
+      try {
+        const h = await window.electronAPI.getHealth();
+        const parts = [];
+        parts.push('Backend: ' + (h.backend ? 'OK' : 'OFF'));
+        parts.push('Ollama: ' + (h.ollama ? 'OK' : 'OFF'));
+        parts.push('OpenCode: ' + (h.opencode ? 'OK' : 'OFF'));
+        parts.push('Provider: ' + (h.provider || 'none'));
+        showAboutResult(true, parts.join(' | '));
+      } catch (err) {
+        showAboutResult(false, 'Health check failed: ' + err.message);
+      }
+    });
+
     // ---- Onboarding Panel ----
 
     const onboardingPanel = $('#onboarding-panel');
@@ -2379,7 +2691,7 @@
 
     // Step 6: Try buttons
     $('#onb-try-explain-btn').addEventListener('click', async () => {
-      const input = $('#prompt-input');
+      const input = $('#chat-input');
       if (input) {
         input.value = 'Explain what is on my screen';
         const modeRadio = document.querySelector('#preset-buttons input[name="mode"]:checked') ||
@@ -2390,12 +2702,12 @@
           if (screenPreset) screenPreset.click();
         }
         // Trigger ask
-        document.querySelector('#prompt-ask-btn')?.click();
+        $('#send-btn')?.click();
       }
     });
     $('#onb-try-smartfix-btn').addEventListener('click', async () => {
       hideAllPanelsExcept('onboarding-panel');
-      await runSmartFix();
+      await smartFix();
     });
     $('#onb-try-setup-btn').addEventListener('click', () => {
       hideAllPanelsExcept('onboarding-panel');
@@ -2412,6 +2724,39 @@
       setOnboardingComplete(false);
       showOnboarding(1);
     });
+
+    // Reset App Data
+    $('#setup-reset-btn').addEventListener('click', async () => {
+      if (!confirm('Reset all app data? This will clear settings, runs, diagnostics, and logs. Reload required.')) return;
+      const r = await window.electronAPI.appReset();
+      showSetupResult(r.success, r.message);
+      if (r.success) {
+        localStorage.clear();
+        setTimeout(() => window.electronAPI.expandWindow(0), 1000);
+        location.reload();
+      }
+    });
+
+    // Export Logs
+    $('#setup-export-btn').addEventListener('click', async () => {
+      const r = await window.electronAPI.appExportLogs();
+      if (r.success) {
+        showSetupResult(true, `Logs saved to: ${r.path}`);
+      } else {
+        showSetupResult(false, r.message);
+      }
+    });
+
+    // Safe Mode indicator
+    (async () => {
+      try {
+        const r = await window.electronAPI.appSafeMode();
+        if (r.success && r.safe_mode) {
+          $('#setup-safe-mode-label').textContent = '🛡️ Safe Mode: ON';
+          $('#setup-safe-mode-label').style.color = '#ff9800';
+        }
+      } catch {}
+    })();
 
     // First-run detection: run after everything else initializes
     setTimeout(() => {

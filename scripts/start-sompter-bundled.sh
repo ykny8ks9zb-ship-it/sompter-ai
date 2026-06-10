@@ -43,6 +43,14 @@ if ! curl -sf http://localhost:$BACKEND_PORT/api/health > /dev/null 2>&1; then
   fi
 fi
 
+# Ensure Playwright is available for browser control mode
+if "$VENV_PYTHON" -c "import playwright" 2>/dev/null; then
+  echo "Playwright is available"
+else
+  echo "Playwright not found — browser control mode will not work."
+  echo "To install: run inside the project: pip install playwright && python -m playwright install chromium"
+fi
+
 # Start OpenCode serve if not already running
 if ! curl -sf http://localhost:$OPENCODE_PORT/global/health > /dev/null 2>&1; then
   if command -v opencode &>/dev/null; then

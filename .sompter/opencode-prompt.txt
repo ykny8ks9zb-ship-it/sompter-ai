@@ -1,4 +1,4 @@
-You are working inside this local project. The user wants: Test fallback should save prompt
+You are working inside this local project. The user wants: add a comment to the README saying hello world
 Find the issue, explain it shortly, make safe code changes only, and run tests if available.
 Do not delete files. Do not use sudo. Do not touch .env/auth/API keys.
 If a risky command is needed, stop and explain.

@@ -2,9 +2,12 @@ import os
 import base64
 import json
 import re
+import shutil
 import subprocess
 import socket
 import signal
+import tempfile
+import tarfile
 import uuid
 import datetime
 import requests
@@ -50,6 +53,7 @@ BLOCKED_PATTERNS = [
 ]
 
 VALID_ACTION_TYPES = {"click", "type", "hotkey", "open_app", "run_command", "none"}
+VALID_BROWSER_ACTION_TYPES = {"browser_click", "browser_type", "browser_navigate", "browser_evaluate", "none"}
 
 CONTROL_PLAN_PROMPT = """You are a Mac AI assistant that can see the user's screen. Your job is to analyze the screenshot and suggest ONE concrete, safe, useful next action.
 
@@ -106,6 +110,34 @@ Examples:
 {"summary": "VS Code with code visible, no errors.", "recommended_action": {"type": "hotkey", "params": {"keys": ["command", "shift", "p"]}, "reason": "Open command palette.", "risk": "low"}, "requires_confirmation": true}
 
 {"summary": "Desktop with no applications open.", "recommended_action": {"type": "none", "params": {}, "reason": "Nothing actionable on screen.", "risk": "low"}, "requires_confirmation": true}"""
+
+BROWSER_CONTROL_PLAN_PROMPT = """You are a browser automation AI assistant. You control a web browser via Playwright. Your job is to analyze the screenshot of the current page and suggest ONE concrete next browser action.
+
+Return ONLY valid JSON with no markdown formatting, no code fences, no extra text. Just the raw JSON object.
+
+The JSON must follow this exact structure:
+{
+  "summary": "Short 1-2 sentence explanation of what you see on the page.",
+  "recommended_action": {
+    "type": "browser_click | browser_type | browser_navigate | browser_evaluate | none",
+    "params": {},
+    "reason": "Why this action helps the user.",
+    "risk": "low | medium"
+  },
+  "requires_confirmation": true
+}
+
+Rules for picking action:
+- browser_click: needs {"selector": "CSS selector for the element to click"}  e.g. {"selector": "#submit-btn"} or {"selector": "button[type='submit']"} or {"selector": "a.nav-link"}
+- browser_type: needs {"selector": "CSS selector", "text": "text to type into the input"}
+- browser_navigate: needs {"url": "https://full-url.example.com"}
+- browser_evaluate: needs {"js": "JavaScript expression to evaluate"} — only for reading page data, not modifying
+- none: use when no clear action makes sense
+
+Examples:
+{"summary": "Login page with email and password fields.", "recommended_action": {"type": "browser_click", "params": {"selector": "input[name='email']"}, "reason": "Focus the email input field.", "risk": "low"}, "requires_confirmation": true}
+{"summary": "Page showing 'Page not found' error.", "recommended_action": {"type": "browser_navigate", "params": {"url": "https://example.com"}, "reason": "Navigate to the homepage.", "risk": "low"}, "requires_confirmation": true}
+{"summary": "Search results page.", "recommended_action": {"type": "browser_click", "params": {"selector": "a.result-link:first-of-type"}, "reason": "Click the first search result.", "risk": "low"}, "requires_confirmation": true}"""
 
 
 class ChatRequest(BaseModel):
@@ -201,7 +233,10 @@ def call_ollama(prompt: str, screenshot_b64: str | None, search_web: bool, syste
         user_content = f"Web search results:\n{search_results}\n\nUser question: {prompt}"
     user_msg = {"role": "user", "content": user_content}
     if screenshot_b64:
-        user_msg["images"] = [screenshot_b64]
+        img = screenshot_b64
+        if img.startswith("data:image/"):
+            img = img.split(",", 1)[-1]
+        user_msg["images"] = [img]
     messages.append(user_msg)
 
     resp = requests.post(
@@ -226,9 +261,12 @@ def call_gemini(prompt: str, screenshot_b64: str | None, search_web: bool, syste
 
     parts = [Part.from_text(text=text)]
     if screenshot_b64:
+        img = screenshot_b64
+        if img.startswith("data:image/"):
+            img = img.split(",", 1)[-1]
         parts.append(
             Part.from_bytes(
-                data=base64.b64decode(screenshot_b64),
+                data=base64.b64decode(img),
                 mime_type="image/png",
             )
         )
@@ -251,9 +289,12 @@ def call_openai(prompt: str, screenshot_b64: str | None, search_web: bool, syste
         content.insert(0, {"type": "text", "text": f"Web search results:\n{results}"})
 
     if screenshot_b64:
+        img = screenshot_b64
+        if img.startswith("data:image/"):
+            img = img.split(",", 1)[-1]
         content.append({
             "type": "image_url",
-            "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"},
+            "image_url": {"url": f"data:image/png;base64,{img}"},
         })
 
     resp = client.chat.completions.create(
@@ -325,13 +366,14 @@ def extract_json(text: str) -> dict | None:
     return None
 
 
-def validate_plan(data: dict) -> dict | None:
+def validate_plan(data: dict, is_browser: bool = False) -> dict | None:
     if not isinstance(data, dict) or "summary" not in data:
         return None
+    valid_types = VALID_BROWSER_ACTION_TYPES if is_browser else VALID_ACTION_TYPES
     action = data.get("recommended_action")
     if not isinstance(action, dict) or "type" not in action:
         return None
-    if action["type"] not in VALID_ACTION_TYPES:
+    if action["type"] not in valid_types:
         action["type"] = "none"
     if not isinstance(action.get("params"), dict):
         action["params"] = {}
@@ -361,7 +403,10 @@ async def chat(req: ChatRequest):
 @app.post("/api/control/plan")
 async def control_plan(req: PlanRequest):
     try:
-        raw = call_ai(req.screenshot, "Analyze this screenshot and return the action plan JSON.", CONTROL_PLAN_PROMPT)
+        is_browser = load_settings().get("control_mode", "os") == "browser"
+        prompt = BROWSER_CONTROL_PLAN_PROMPT if is_browser else CONTROL_PLAN_PROMPT
+        user_msg = "Analyze this browser page screenshot and return the next browser action plan JSON." if is_browser else "Analyze this screenshot and return the action plan JSON."
+        raw = call_ai(req.screenshot, user_msg, prompt)
         parsed = extract_json(raw)
         if parsed is None:
             return {
@@ -371,7 +416,7 @@ async def control_plan(req: PlanRequest):
                 "requires_confirmation": True,
                 "raw_response": raw[:500],
             }
-        validated = validate_plan(parsed)
+        validated = validate_plan(parsed, is_browser)
         if validated is None:
             return {
                 "success": False,
@@ -380,6 +425,7 @@ async def control_plan(req: PlanRequest):
                 "requires_confirmation": True,
             }
         validated["success"] = True
+        validated["control_mode"] = "browser" if is_browser else "os"
         return validated
     except Exception as e:
         return {
@@ -414,11 +460,79 @@ async def health():
         "opencode": oc is not None,
         "provider": provider,
         "mode": mode,
+        "control_mode": settings.get("control_mode", "os"),
+        "browser_visible": settings.get("browser_visible", False),
         "ollama_model": settings.get("ollama_model", ollama_model),
         "gemini_model": settings.get("gemini_model", gemini_model),
         "openai_model": settings.get("openai_model", openai_model),
         "gemini_available": bool(gemini_api_key),
         "openai_available": bool(openai_api_key),
+    }
+
+
+def get_git_commit():
+    """Get short git commit hash from project repo."""
+    repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    try:
+        r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=repo_dir, timeout=5)
+        if r.returncode == 0:
+            return r.stdout.strip()
+    except Exception:
+        pass
+    return "unknown"
+
+
+def get_package_version():
+    """Read version from package.json."""
+    pkg_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "package.json")
+    try:
+        with open(pkg_path) as f:
+            return json.load(f).get("version", "1.0.0")
+    except Exception:
+        return "1.0.0"
+
+
+@app.get("/api/about")
+async def about():
+    settings = load_settings()
+    commit = get_git_commit()
+    version = get_package_version()
+    oa = ollama_available()
+    oc = find_opencode_server()
+    return {
+        "app_name": "Sompter AI",
+        "version": version,
+        "commit": commit,
+        "build_type": "dev",
+        "provider_mode": settings.get("mode", "auto"),
+        "control_mode": settings.get("control_mode", "os"),
+        "browser_visible": settings.get("browser_visible", False),
+        "ollama_available": oa,
+        "opencode_available": oc is not None,
+        "ollama_model": settings.get("ollama_model", ollama_model),
+        "gemini_model": settings.get("gemini_model", gemini_model),
+        "openai_model": settings.get("openai_model", openai_model),
+        "backend_url": "http://localhost:8787",
+        "opencode_port": 4096,
+        "release_notes": [
+            {"title": "Stability Pass + Release Build (v0.1.0 Alpha)", "step": "36-37"},
+            {"title": "Browser Control Mode (Playwright)", "step": "35"},
+            {"title": "About / Release Notes Panel", "step": "34"},
+            {"title": "Final Release Test", "step": "33"},
+            {"title": "First-Run Onboarding", "step": "32"},
+            {"title": "macOS App Packaging", "step": "31"},
+            {"title": "Menu Bar App + Notifications", "step": "30"},
+            {"title": "Service Controls / Restart Panel", "step": "29"},
+            {"title": "Provider + Model Settings", "step": "28"},
+            {"title": "Diagnostics / Bug Report Export", "step": "27"},
+            {"title": "AI Run Snapshots + Undo Safety", "step": "26"},
+            {"title": "Smart Fix Flow", "step": "25"},
+            {"title": "Project Profiles / Quick Switch", "step": "24"},
+            {"title": "Conversation History", "step": "23"},
+            {"title": "Custom Prompt Buttons", "step": "22"},
+            {"title": "Setup Permissions Checker", "step": "21"},
+            {"title": "Mac App Launcher", "step": "20"},
+        ],
     }
 
 
@@ -959,6 +1073,8 @@ DOTENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 
 DEFAULT_SETTINGS = {
     "mode": "auto",
+    "control_mode": "os",
+    "browser_visible": False,
     "ollama_model": "gemma3:12b",
     "gemini_model": "gemini-2.0-flash",
     "openai_model": "gpt-4o-mini",
@@ -1030,6 +1146,8 @@ async def settings_get():
     refresh_env()
     return {
         "mode": s.get("mode", "auto"),
+        "control_mode": s.get("control_mode", "os"),
+        "browser_visible": s.get("browser_visible", False),
         "ollama_model": s.get("ollama_model", ollama_model),
         "gemini_model": s.get("gemini_model", gemini_model),
         "openai_model": s.get("openai_model", openai_model),
@@ -1044,6 +1162,8 @@ async def settings_get():
 
 class SettingsSaveRequest(BaseModel):
     mode: str = "auto"
+    control_mode: str | None = None
+    browser_visible: bool | None = None
     ollama_model: str | None = None
     gemini_model: str | None = None
     openai_model: str | None = None
@@ -1057,6 +1177,10 @@ async def settings_save(req: SettingsSaveRequest):
         non_secret = {}
         if req.mode in ("auto", "ollama", "gemini", "openai"):
             non_secret["mode"] = req.mode
+        if req.control_mode in ("os", "browser"):
+            non_secret["control_mode"] = req.control_mode
+        if req.browser_visible is not None:
+            non_secret["browser_visible"] = req.browser_visible
         if req.ollama_model:
             non_secret["ollama_model"] = req.ollama_model
         if req.gemini_model:
@@ -1385,6 +1509,83 @@ async def runs_undo(req: UndoRequest):
         return {"success": False, "message": str(e)}
 
 
+# ---- Browser Control ----
+
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import browser_manager as bman
+
+
+class BrowserNavigateRequest(BaseModel):
+    url: str
+
+
+class BrowserClickRequest(BaseModel):
+    selector: str
+
+
+class BrowserTypeRequest(BaseModel):
+    selector: str
+    text: str
+
+
+class BrowserEvaluateRequest(BaseModel):
+    js: str
+
+
+class BrowserStartRequest(BaseModel):
+    headless: bool = True
+    width: int = 1280
+    height: int = 720
+
+
+@app.post("/api/browser/start")
+async def browser_start(req: BrowserStartRequest | None = None):
+    if req is None:
+        req = BrowserStartRequest()
+    return await bman.start_browser(headless=req.headless, width=req.width, height=req.height)
+
+
+@app.post("/api/browser/stop")
+async def browser_stop():
+    return await bman.stop_browser()
+
+
+@app.get("/api/browser/status")
+async def browser_status():
+    return await bman.browser_status()
+
+
+@app.post("/api/browser/navigate")
+async def browser_navigate(req: BrowserNavigateRequest):
+    return await bman.navigate(req.url)
+
+
+@app.post("/api/browser/click")
+async def browser_click(req: BrowserClickRequest):
+    return await bman.browser_click(req.selector)
+
+
+@app.post("/api/browser/type")
+async def browser_type(req: BrowserTypeRequest):
+    return await bman.browser_type(req.selector, req.text)
+
+
+@app.post("/api/browser/screenshot")
+async def browser_screenshot():
+    return await bman.browser_screenshot()
+
+
+@app.post("/api/browser/evaluate")
+async def browser_evaluate(req: BrowserEvaluateRequest):
+    return await bman.browser_evaluate(req.js)
+
+
+@app.post("/api/browser/text")
+async def browser_text():
+    return await bman.get_page_text()
+
+
 # ---- Service Controls ----
 
 SERVICE_LOG_DIR = os.path.join(SOMPTER_DIR, "logs")
@@ -1414,14 +1615,8 @@ def is_port_open(port: int, host: str = "127.0.0.1") -> bool:
 
 @app.get("/api/services/status")
 async def services_status():
-    backend_alive = True
-    try:
-        requests.get("http://127.0.0.1:8787/api/health", timeout=2)
-    except Exception:
-        backend_alive = False
-
     return {
-        "backend": {"alive": backend_alive, "port": 8787, "port_open": is_port_open(8787)},
+        "backend": {"alive": True, "port": 8787, "port_open": is_port_open(8787)},
         "ollama": {"alive": ollama_available(), "port": 11434, "port_open": is_port_open(11434)},
         "opencode": {"alive": find_opencode_server() is not None, "port": 4096, "port_open": is_port_open(4096)},
         "settings": {
@@ -1525,3 +1720,68 @@ async def services_stop_all():
         msg = f"Stop all failed: {str(e)}"
         log_service_action("stop_all", msg)
         return {"success": False, "message": msg}
+
+
+@app.post("/api/app/reset")
+async def app_reset():
+    try:
+        # Clear .sompter/settings.json
+        if os.path.exists(SETTINGS_PATH):
+            os.remove(SETTINGS_PATH)
+        # Clear .sompter/runs/
+        runs_dir = os.path.join(SOMPTER_DIR, "runs")
+        if os.path.exists(runs_dir):
+            shutil.rmtree(runs_dir)
+        # Clear .sompter/diagnostics/
+        diag_dir = os.path.join(SOMPTER_DIR, "diagnostics")
+        if os.path.exists(diag_dir):
+            shutil.rmtree(diag_dir)
+        # Clear .sompter/logs/
+        logs_dir = os.path.join(SOMPTER_DIR, "logs")
+        if os.path.exists(logs_dir):
+            shutil.rmtree(logs_dir)
+        return {"success": True, "message": "App data reset. Reload the window to complete."}
+    except Exception as e:
+        return {"success": False, "message": f"Reset failed: {str(e)}"}
+
+
+@app.post("/api/app/export_logs")
+async def app_export_logs():
+    try:
+        tmp = tempfile.mkdtemp()
+        tarball = os.path.join(tmp, "sompter-logs.tar.gz")
+        with tarfile.open(tarball, "w:gz") as tar:
+            # Service logs
+            log_dir = os.path.join(SOMPTER_DIR, "logs")
+            if os.path.exists(log_dir):
+                for f in os.listdir(log_dir):
+                    fpath = os.path.join(log_dir, f)
+                    if os.path.isfile(fpath):
+                        tar.add(fpath, arcname=f"logs/{f}")
+            # Diagnostics
+            diag_dir = os.path.join(SOMPTER_DIR, "diagnostics")
+            if os.path.exists(diag_dir):
+                for f in os.listdir(diag_dir):
+                    fpath = os.path.join(diag_dir, f)
+                    if os.path.isfile(fpath):
+                        tar.add(fpath, arcname=f"diagnostics/{f}")
+            # Settings (non-secret)
+            if os.path.exists(SETTINGS_PATH):
+                tar.add(SETTINGS_PATH, arcname="settings.json")
+            # Runs summary (task.txt + meta.json only, no diffs)
+            runs_dir = os.path.join(SOMPTER_DIR, "runs")
+            if os.path.exists(runs_dir):
+                for run_id in os.listdir(runs_dir):
+                    run_path = os.path.join(runs_dir, run_id)
+                    if os.path.isdir(run_path):
+                        for f in ["task.txt", "meta.json"]:
+                            fpath = os.path.join(run_path, f)
+                            if os.path.isfile(fpath):
+                                tar.add(fpath, arcname=f"runs/{run_id}/{f}")
+        # Read the tarball as base64
+        with open(tarball, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+        shutil.rmtree(tmp)
+        return {"success": True, "data": b64, "filename": "sompter-logs.tar.gz"}
+    except Exception as e:
+        return {"success": False, "message": f"Export failed: {str(e)}"}

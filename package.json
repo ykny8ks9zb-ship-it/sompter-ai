@@ -1,6 +1,6 @@
 {
   "name": "sompter-ai",
-  "version": "1.0.0",
+  "version": "0.1.0-alpha",
   "description": "Floating macOS sidebar AI assistant",
   "main": "app/main.js",
   "scripts": {

@@ -396,4 +396,54 @@ You can also disable notifications from the Setup panel.
 - **Menu bar > Right-click > Quit Sompter AI**
 - Or run `npm run stop` from the terminal
 
+## Browser Control Mode
+
+Sompter AI has two control modes for executing actions:
+
+| Mode | How It Works | Best For |
+|------|-------------|----------|
+| **OS Mode** (default) | Uses `pyautogui` — clicks by screen coordinates, types at OS level | Any app on your Mac (Terminal, VS Code, Finder, etc.) |
+| **Browser Mode** | Uses Playwright — clicks by CSS selectors, types into web inputs, navigates URLs | Web pages, web apps, browser-based workflows |
+
+### Switching Modes
+
+Click the control mode indicator in the sidebar footer:
+- **🖱 OS** — Current OS-level control mode
+- **🌐 Browser** — Current browser control mode (highlighted green)
+
+Or save the setting via the 🧠 Models panel or API:
+```bash
+curl -X POST http://localhost:8787/api/settings \
+  -H "Content-Type: application/json" \
+  -d '{"control_mode":"browser"}'
+```
+
+### Browser Control API
+
+When in browser mode, the Control Mac feature generates browser-specific actions with CSS selectors instead of screen coordinates. All browser actions are available as API endpoints:
+
+| Endpoint | Action | Parameters |
+|----------|--------|------------|
+| `POST /api/browser/start` | Launch Playwright browser | `{headless?: bool, width?: int, height?: int}` |
+| `POST /api/browser/stop` | Close the browser | — |
+| `GET /api/browser/status` | Check if browser is running and get current URL | — |
+| `POST /api/browser/navigate` | Go to a URL | `{url: string}` |
+| `POST /api/browser/click` | Click an element | `{selector: "CSS selector"}` |
+| `POST /api/browser/type` | Type into an input | `{selector: "CSS selector", text: string}` |
+| `POST /api/browser/screenshot` | Capture page screenshot | — |
+| `POST /api/browser/evaluate` | Run JavaScript in page | `{js: "expression"}` |
+| `POST /api/browser/text` | Get page text content | — |
+
+### How It Works
+
+1. Toggle the footer indicator to **🌐 Browser**
+2. Click **Control Mac** — the AI analyzes the browser screenshot
+3. The AI generates a browser action plan using CSS selectors (e.g., `#search-input`, `button[type="submit"]`)
+4. Review and confirm the action — it runs in the Playwright-controlled browser
+
+### Requirements
+
+- Playwright + Chromium is installed automatically with the backend (`pip install playwright && python -m playwright install chromium`)
+- In the packaged `.app`, the bundled startup script includes Playwright checks
+
 ## Architecture

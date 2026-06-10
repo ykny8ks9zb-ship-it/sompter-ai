@@ -212,8 +212,18 @@ header {
 
 #preset-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr;
+  grid-template-columns: 1fr auto;
   gap: 5px;
+}
+
+#preset-actions .preset-action-btn:first-child {
+  background: linear-gradient(135deg, #7c3aed, #a78bfa);
+  color: #fff;
+  font-weight: 600;
+}
+
+#preset-actions .preset-action-btn:first-child:hover {
+  opacity: 0.9;
 }
 
 .preset-action-btn {
@@ -229,6 +239,41 @@ header {
 }
 
 .preset-action-btn:hover {
+  background: #3d3d5c;
+  border-color: #7c3aed;
+  color: #fff;
+}
+
+#gear-popup {
+  position: absolute;
+  top: 62px;
+  right: 8px;
+  background: #1e1e38;
+  border: 1px solid #3d3d5c;
+  border-radius: 10px;
+  padding: 6px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  z-index: 100;
+  min-width: 200px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+
+.gear-item {
+  background: #2d2d4a;
+  border: 1px solid #3d3d5c;
+  color: #a78bfa;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+
+.gear-item:hover {
   background: #3d3d5c;
   border-color: #7c3aed;
   color: #fff;
@@ -787,6 +832,25 @@ textarea.action-param {
   margin-left: auto;
   color: #7c3aed;
   font-weight: 500;
+}
+
+.footer-control-mode {
+  color: #a78bfa;
+  font-weight: 600;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #2d2d4a;
+  border: 1px solid #3d3d5c;
+  user-select: none;
+}
+.footer-control-mode:hover {
+  background: #3d3d5c;
+}
+.footer-control-mode.browser-mode {
+  color: #22c55e;
+  border-color: #22c55e44;
 }
 
 /* ---- Setup Panel ---- */
@@ -1735,3 +1799,171 @@ textarea.action-param {
   width: 100%;
   text-align: center;
 }
+
+/* Setup panel about button */
+#setup-about-row {
+  margin-top: 4px;
+}
+
+#setup-about-row .setup-btn {
+  font-size: 10px;
+  padding: 4px 6px;
+  width: 100%;
+  text-align: center;
+}
+
+/* ---- About Panel ---- */
+
+#about-panel {
+  border-top: 1px solid #555;
+  padding: 8px;
+  font-size: 12px;
+}
+
+#about-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-weight: 700;
+  color: #e0d0ff;
+  font-size: 13px;
+}
+
+#about-header span {
+  flex: 1;
+}
+
+#about-content {
+  margin-bottom: 8px;
+}
+
+#about-info {
+  background: #1a1a2e;
+  border-radius: 4px;
+  padding: 6px;
+  margin-bottom: 8px;
+}
+
+.about-row {
+  display: flex;
+  align-items: center;
+  padding: 2px 0;
+  font-size: 11px;
+}
+
+.about-label {
+  color: #888;
+  min-width: 72px;
+  flex-shrink: 0;
+}
+
+.about-value {
+  color: #ccc;
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 10px;
+  word-break: break-all;
+}
+
+#about-release-notes {
+  background: #1a1a2e;
+  border-radius: 4px;
+  padding: 6px;
+}
+
+#about-release-title {
+  font-weight: 600;
+  color: #e0d0ff;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+#about-release-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.about-release-item {
+  font-size: 10px;
+  color: #aaa;
+  padding: 2px 4px;
+  border-radius: 2px;
+}
+
+.about-release-item:hover {
+  background: #2a2a4e;
+}
+
+.about-release-step {
+  color: #7c3aed;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+#about-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+#about-buttons .setup-btn {
+  flex: 1;
+  min-width: 60px;
+  font-size: 10px;
+  padding: 4px 6px;
+}
+
+#about-result {
+  font-size: 11px;
+  padding: 4px 0;
+  margin-top: 4px;
+}
+
+#about-result.ok { color: #4caf50; }
+#about-result.err { color: #f44336; }
+
+#about-known-issues {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #2a1a1a;
+  border-radius: 6px;
+  border: 1px solid #5c3a3a;
+}
+#about-known-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #ff9800;
+}
+#about-known-list {
+  font-size: 11px;
+  color: #bbb;
+  padding-left: 16px;
+  line-height: 1.6;
+}
+
+#setup-app-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+#setup-app-row .setup-btn {
+  flex: 1;
+  font-size: 11px;
+}
+
+#setup-safe-row {
+  margin-top: 8px;
+  text-align: center;
+}
+#setup-safe-mode-label {
+  font-size: 11px;
+  color: #888;
+}
+
+#setup-reset-btn { border-color: #c0392b; color: #e74c3c; }
+#setup-export-btn { border-color: #8b5cf6; color: #a78bfa; }

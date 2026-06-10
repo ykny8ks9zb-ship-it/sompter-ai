@@ -1,6 +1,0 @@
-{
-  "mode": "auto",
-  "ollama_model": "gemma3:12b",
-  "gemini_model": "gemini-2.0-flash",
-  "openai_model": "gpt-4o-mini"
-}

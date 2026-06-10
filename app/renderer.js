@@ -4,12 +4,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   ask: (prompt) => ipcRenderer.invoke('ask', { prompt }),
   controlPlan: () => ipcRenderer.invoke('controlPlan'),
   runAction: (action, params) => ipcRenderer.invoke('runAction', { action, params }),
+  runBrowserAction: (action, params) => ipcRenderer.invoke('runBrowserAction', { action, params }),
   opencodeRun: (projectPath, task) => ipcRenderer.invoke('opencodeRun', { projectPath, task }),
   projectStatus: (projectPath) => ipcRenderer.invoke('projectStatus', { projectPath }),
   projectDiff: (projectPath) => ipcRenderer.invoke('projectDiff', { projectPath }),
   runTest: (projectPath, command) => ipcRenderer.invoke('runTest', { projectPath, command }),
   openFolder: (projectPath) => ipcRenderer.invoke('openFolder', { projectPath }),
   openFile: (filePath) => ipcRenderer.invoke('openFile', { filePath }),
+  openREADME: () => ipcRenderer.invoke('openREADME'),
 
   // Window state
   initWindow: (collapsed, y) => ipcRenderer.invoke('initWindow', collapsed, y),
@@ -63,6 +65,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMenuBarPrefs: () => ipcRenderer.invoke('getMenuBarPrefs'),
   saveMenuBarPrefs: (prefs) => ipcRenderer.invoke('saveMenuBarPrefs', prefs),
   showNotification: (title, body) => ipcRenderer.invoke('showNotification', { title, body }),
+
+  // About
+  getAboutInfo: () => ipcRenderer.invoke('getAboutInfo'),
+
+  // App Management
+  appReset: () => ipcRenderer.invoke('appReset'),
+  appExportLogs: () => ipcRenderer.invoke('appExportLogs'),
+  appSafeMode: () => ipcRenderer.invoke('appSafeMode'),
 
   onMenuAction: (callback) => {
     ipcRenderer.on('menu-action', (_event, action) => callback(action));
