@@ -29,6 +29,7 @@ BACKEND_URL = os.environ.get("SOMPTER_BACKEND_URL", "http://localhost:8787")
 INTERVAL = int(os.environ.get("SOMPTER_WATCH_INTERVAL", "10"))
 LOG_FILE = os.environ.get("SOMPTER_WATCH_LOG", "/tmp/sompter-watch-daemon.log")
 NOTES_NOTE_NAME = os.environ.get("SOMPTER_NOTES_NOTE", "Sompter Chat")
+NOTIFICATIONS_ENABLED = os.environ.get("SOMPTER_NOTIFICATIONS", "1") == "1"
 PROJECT_DIR = os.environ.get(
     "SOMPTER_PROJECT_DIR",
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -104,6 +105,98 @@ def get_active_app() -> str:
         "to get name of first process whose frontmost is true"
     )
     return run_osascript(script, timeout=5)
+
+
+# ── Browser tab monitoring ─────────────────────────────────────────────
+def app_is_running(name: str) -> bool:
+    try:
+        result = subprocess.run(
+            ["osascript", "-e",
+             f'tell application "System Events" to exists (processes where name is "{name}")'],
+            capture_output=True, text=True, timeout=5,
+        )
+        return result.stdout.strip() == "true"
+    except Exception:
+        return False
+
+
+def get_chrome_tabs(max_tabs: int = 5) -> list[str]:
+    if not app_is_running("Google Chrome"):
+        return []
+    script = f"""
+        tell application "Google Chrome"
+            set tabList to {{}}
+            set windowIndex to 1
+            repeat with w in windows
+                set tabIndex to 1
+                repeat with t in tabs of w
+                    if tabIndex > {max_tabs} then exit repeat
+                    set end of tabList to (title of t) & " | " & (URL of t)
+                    set tabIndex to tabIndex + 1
+                end repeat
+                set windowIndex to windowIndex + 1
+                if windowIndex > 2 then exit repeat
+            end repeat
+            return tabList
+        end tell
+    """
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return []
+        return [l.strip() for l in result.stdout.strip().split(",") if l.strip()][:max_tabs]
+    except Exception:
+        return []
+
+
+def get_safari_tabs(max_tabs: int = 5) -> list[str]:
+    if not app_is_running("Safari"):
+        return []
+    script = f"""
+        tell application "Safari"
+            set tabList to {{}}
+            set windowIndex to 1
+            repeat with w in windows
+                set tabIndex to 1
+                repeat with t in tabs of w
+                    if tabIndex > {max_tabs} then exit repeat
+                    set end of tabList to (name of t) & " | " & (URL of t)
+                    set tabIndex to tabIndex + 1
+                end repeat
+                set windowIndex to windowIndex + 1
+                if windowIndex > 2 then exit repeat
+            end repeat
+            return tabList
+        end tell
+    """
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return []
+        return [l.strip() for l in result.stdout.strip().split(",") if l.strip()][:max_tabs]
+    except Exception:
+        return []
+
+
+def get_browser_tabs() -> str:
+    parts = []
+    chrome = get_chrome_tabs()
+    if chrome:
+        parts.append("Chrome tabs:")
+        for t in chrome:
+            parts.append(f"  {t}")
+    safari = get_safari_tabs()
+    if safari:
+        parts.append("Safari tabs:")
+        for t in safari:
+            parts.append(f"  {t}")
+    return "\n".join(parts)
 
 
 # ── HTML helpers ───────────────────────────────────────────────────────
@@ -255,6 +348,36 @@ def call_backend(
         return ""
 
 
+# ── Notifications ──────────────────────────────────────────────────────
+IMPORTANT_KEYWORDS = [
+    "storm", "warning", "advisory", "hurricane", "tornado", "flood",
+    "earthquake", "wildfire", "evacuation", "shelter", "emergency",
+    "score", "win", "loss", "trade", "champion", "playoff",
+    "deadline", "meeting", "reminder", "alert", "important", "urgent",
+    "error", "crash", "failed", "outage", "breach", "critical",
+    "your question", "you asked", "you wanted to know",
+]
+
+
+def should_notify(reply: str, notes_msg: str) -> bool:
+    if not NOTIFICATIONS_ENABLED:
+        return False
+    if notes_msg.strip():
+        return True
+    lower = reply.lower()
+    return any(kw in lower for kw in IMPORTANT_KEYWORDS)
+
+
+def send_notification(title: str, body: str):
+    safe_title = title.replace('"', '\\"').replace("'", "'\\''")
+    safe_body = body.replace('"', '\\"').replace("'", "'\\''")[:200]
+    script = f'display notification "{safe_body}" with title "{safe_title}"'
+    try:
+        subprocess.run(["osascript", "-e", script], capture_output=True, timeout=5)
+    except Exception as e:
+        log.warning(f"Notification failed: {e}")
+
+
 # ── Memory (SQLite) ────────────────────────────────────────────────────
 def init_memory():
     db_dir = os.path.dirname(MEMORY_DB)
@@ -284,6 +407,54 @@ def init_memory():
     conn.commit()
     conn.close()
     log.info(f"Memory DB initialized at {MEMORY_DB}")
+
+
+# ── Pattern detection ──────────────────────────────────────────────────
+def detect_patterns() -> list[str]:
+    try:
+        conn = sqlite3.connect(MEMORY_DB)
+        conn.row_factory = sqlite3.Row
+        # Get user questions from last 7 days with their hour-of-day
+        rows = conn.execute(
+            """SELECT notes_message, timestamp
+               FROM observations
+               WHERE notes_message IS NOT NULL
+                 AND notes_message != ''
+                 AND timestamp >= ?
+               ORDER BY timestamp""",
+            ((datetime.now() - timedelta(days=7)).isoformat(),),
+        ).fetchall()
+        conn.close()
+
+        if len(rows) < 3:
+            return []
+
+        # Group similar messages by approximate time pattern
+        from collections import defaultdict
+        hourly: dict[str, list[int]] = defaultdict(list)
+        for r in rows:
+            msg = r["notes_message"].strip().lower()[:60]
+            if not msg:
+                continue
+            hour = datetime.fromisoformat(r["timestamp"]).hour
+            hourly[msg].append(hour)
+
+        # Find messages that appear 3+ times within a 2-hour window
+        now_hour = datetime.now().hour
+        patterns = []
+        for msg, hours in hourly.items():
+            if len(hours) < 3:
+                continue
+            # Check if there's a cluster around the current hour
+            for target_hour in range(max(0, now_hour - 2), min(24, now_hour + 3)):
+                count = sum(1 for h in hours if abs(h - target_hour) <= 1)
+                if count >= 2:
+                    patterns.append(msg)
+                    break
+        return patterns[:3]
+    except Exception as e:
+        log.warning(f"Pattern detection failed: {e}")
+        return []
 
 
 # ── Context injection (memory) ────────────────────────────────────────
@@ -333,6 +504,16 @@ def build_context() -> str:
                 if reply:
                     parts.append(f"      AI: {strip_html(reply)[:200]}")
         context = "\n".join(parts)
+
+        # Add detected patterns
+        patterns = detect_patterns()
+        if patterns:
+            pattern_lines = "\n".join(f"  - \"{p}\"" for p in patterns)
+            context += (
+                f"\n\nRecurring patterns detected (you often ask about these "
+                f"around this time of day):\n{pattern_lines}\n"
+                "Proactively address these if relevant."
+            )
         return context
     except Exception as e:
         log.warning(f"Failed to build context: {e}")
@@ -420,11 +601,14 @@ def main():
         except Exception as e:
             log.error(f"Screenshot failed: {e}")
 
-        # 2. Active app
+        # 2. Active app + browser tabs
         active_app = ""
         try:
             active_app = get_active_app()
-            log.info(f"Active app: {active_app}")
+            browser_tabs = get_browser_tabs()
+            if browser_tabs:
+                active_app += f"\n{browser_tabs}"
+            log.info(f"Active app: {active_app[:200]}")
         except Exception as e:
             log.error(f"Active app failed: {e}")
 
@@ -458,6 +642,9 @@ def main():
                     log.info("Reply written to Notes")
                 except Exception as e:
                     log.error(f"Notes append failed: {e}")
+                if should_notify(reply, notes_msg):
+                    send_notification("Sompter", strip_html(reply)[:200])
+                    log.info("Notification sent")
                 save_observation(active_app, notes_msg, screenshot_b64, "", reply)
             else:
                 log.warning("No reply from backend")

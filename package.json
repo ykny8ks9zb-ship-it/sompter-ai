@@ -14,7 +14,7 @@
     "package:mac": "npx electron-builder build --mac",
     "dist:mac": "npx electron-builder build --mac --publish never",
     "open:app": "open dist/Sompter\\ AI-*.dmg 2>/dev/null || open dist/mac/*.dmg 2>/dev/null || echo 'No DMG found in dist/'",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": ".venv/bin/python3 -m pytest tests/ -v",
     "watch:install": "bash scripts/manage-daemon.sh install",
     "watch:uninstall": "bash scripts/manage-daemon.sh uninstall",
     "watch:start": "bash scripts/manage-daemon.sh start",

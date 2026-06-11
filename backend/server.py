@@ -1108,15 +1108,12 @@ async def watch_analyze_screen(req: WatchAnalyzeRequest):
         if req.search_web:
             query = req.notes_message if req.notes_message else "latest news, sports scores, current events"
             try:
-                search_context = web_search(query, num=5)
+                loop = asyncio.get_event_loop()
+                search_context = await loop.run_in_executor(None, web_search, query, 5)
                 if search_context and search_context != "No results found.":
                     system_prompt += f"\n\n[SEARCH RESULTS FOR: {query}]\n{search_context}"
             except Exception:
                 pass
-
-        with open("/tmp/sompter-watch-debug.txt", "a") as f:
-            f.write(f"search_web={req.search_web} notes={req.notes_message!r} ctx_len={len(search_context) if search_context else 0}\n")
-            f.write(f"ctx={str(search_context)[:500]!r}\n")
 
         if req.memory_context:
             system_prompt += f"\n\n[RECENT CONTEXT FROM YOUR SESSIONS]\n{req.memory_context}"
@@ -1137,10 +1134,8 @@ async def watch_analyze_screen(req: WatchAnalyzeRequest):
             "Be informative and proactive."
         )
         b64 = req.screenshot_b64 if req.screenshot_b64 else None
-        if b64:
-            result = call_ai(b64, prompt, system_prompt, False)
-        else:
-            result = call_ai(None, prompt, system_prompt, False)
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, call_ai, b64, prompt, system_prompt, False)
         return {"reply": result, "needs_confirmation": False}
     except Exception as e:
         return {"reply": f"Error: {str(e)}", "needs_confirmation": False}

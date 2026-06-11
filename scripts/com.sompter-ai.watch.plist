@@ -34,6 +34,8 @@
         <string>15</string>
         <key>SOMPTER_WATCH_LOG</key>
         <string>/tmp/sompter-watch-daemon.log</string>
+        <key>SOMPTER_NOTIFICATIONS</key>
+        <string>1</string>
         <key>SOMPTER_PROJECT_DIR</key>
         <string>/Users/charliekrason/Documents/desk/untitled folder/sompter-ai</string>
         <key>SOMPTER_MEMORY_DB</key>
