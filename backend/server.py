@@ -12,8 +12,11 @@ import uuid
 import datetime
 import requests
 import pyautogui
+pyautogui.FAILSAFE = False  # Safe: all actions require user confirmation
+import asyncio
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -304,7 +307,7 @@ def call_openai(prompt: str, screenshot_b64: str | None, search_web: bool, syste
     return resp.choices[0].message.content
 
 
-def call_ai(screenshot_b64: str, prompt: str, system_override: str | None = None, search_web: bool = False) -> str:
+def call_ai(screenshot_b64: str | None, prompt: str, system_override: str | None = None, search_web: bool = False) -> str:
     settings = load_settings()
     mode = settings.get("mode", "auto")
 
@@ -398,6 +401,24 @@ async def chat(req: ChatRequest):
         return {"message": msg}
     except Exception as e:
         return {"message": f"AI error: {str(e)}"}
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(req: ChatRequest):
+    async def generate():
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, call_ai, req.screenshot, req.prompt, None, req.search_web)
+            words = result.split(" ")
+            for i, word in enumerate(words):
+                chunk = word + (" " if i < len(words) - 1 else "")
+                yield f"data: {json.dumps({'chunk': chunk, 'done': False})}\n\n"
+                await asyncio.sleep(0.015)
+            yield f"data: {json.dumps({'chunk': '', 'done': True})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'chunk': f'Error: {str(e)}', 'done': True})}\n\n"
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.post("/api/control/plan")
@@ -1065,6 +1086,36 @@ def validate_project_path_fast(path: str) -> str | None:
     return None
 
 
+# ---- Watch Mode ----
+
+class WatchAnalyzeRequest(BaseModel):
+    screenshot_b64: str = ""
+    active_app: str = ""
+    notes_message: str = ""
+    search_web: bool = False
+
+
+@app.post("/api/watch/analyze-screen")
+async def watch_analyze_screen(req: WatchAnalyzeRequest):
+    try:
+        system_prompt = "You are a helpful Mac assistant watching the user's screen. Be concise and observational."
+        if req.active_app:
+            system_prompt += f"\n\nActive application: {req.active_app}"
+        if req.notes_message:
+            system_prompt += f"\n\nUser message: {req.notes_message}"
+        
+        prompt = "Describe what you see and give one actionable suggestion if relevant."
+        b64 = req.screenshot_b64 if req.screenshot_b64 else None
+        # Try without screenshot first if it causes issues
+        if b64:
+            result = call_ai(b64, prompt, system_prompt, req.search_web)
+        else:
+            result = call_ai(None, prompt, system_prompt, req.search_web)
+        return {"reply": result, "needs_confirmation": False}
+    except Exception as e:
+        return {"reply": f"Error: {str(e)}", "needs_confirmation": False}
+
+
 # ---- Provider Settings ----
 
 SOMPTER_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".sompter")
@@ -1148,6 +1199,7 @@ async def settings_get():
         "mode": s.get("mode", "auto"),
         "control_mode": s.get("control_mode", "os"),
         "browser_visible": s.get("browser_visible", False),
+        "project_path": s.get("project_path", ""),
         "ollama_model": s.get("ollama_model", ollama_model),
         "gemini_model": s.get("gemini_model", gemini_model),
         "openai_model": s.get("openai_model", openai_model),
@@ -1164,6 +1216,7 @@ class SettingsSaveRequest(BaseModel):
     mode: str = "auto"
     control_mode: str | None = None
     browser_visible: bool | None = None
+    project_path: str | None = None
     ollama_model: str | None = None
     gemini_model: str | None = None
     openai_model: str | None = None
@@ -1187,6 +1240,8 @@ async def settings_save(req: SettingsSaveRequest):
             non_secret["gemini_model"] = req.gemini_model
         if req.openai_model:
             non_secret["openai_model"] = req.openai_model
+        if req.project_path is not None:
+            non_secret["project_path"] = req.project_path
         save_settings(non_secret)
 
         if req.gemini_key:

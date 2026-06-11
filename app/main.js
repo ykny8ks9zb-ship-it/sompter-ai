@@ -129,6 +129,16 @@ function updateTrayMenu(health) {
       },
     },
     { type: 'separator' },
+    {
+      label: watchModeActive ? '⏸ Pause Watch Mode' : '▶ Start Watch Mode',
+      click: () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.webContents.send('menu-action', watchModeActive ? 'stop-watch' : 'start-watch');
+        }
+      },
+    },
+    { type: 'separator' },
     { label: 'Quit Sompter AI', click: () => { app.quit(); } },
   ]);
   tray.setContextMenu(contextMenu);
@@ -439,6 +449,51 @@ ipcMain.handle('ask', async (_event, { prompt }) => {
   }
 });
 
+ipcMain.handle('startAskStream', async (_event, { prompt }) => {
+  try {
+    const base64 = await takeScreenshot();
+    const response = await fetch(`${BACKEND}/api/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, screenshot: base64 }),
+    });
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send('chat-chunk', data);
+            }
+          } catch {}
+        }
+      }
+    }
+    // Process any remaining data
+    if (buffer.startsWith('data: ')) {
+      try {
+        const data = JSON.parse(buffer.slice(6));
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('chat-chunk', data);
+        }
+      } catch {}
+    }
+  } catch (err) {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('chat-chunk', { chunk: `\n\nError: ${err.message}`, done: true });
+    }
+  }
+});
+
 ipcMain.handle('controlPlan', async () => {
   try {
     const base64 = await takeScreenshot();
@@ -590,6 +645,16 @@ ipcMain.handle('selectFolder', async () => {
     return { success: false, canceled: true };
   }
   return { success: true, path: result.filePaths[0] };
+});
+
+ipcMain.handle('checkPathExists', async (_event, { path: checkPath }) => {
+  try {
+    const exists = fs.existsSync(checkPath);
+    const isDir = exists ? fs.statSync(checkPath).isDirectory() : false;
+    return { success: true, exists, isDirectory: isDir };
+  } catch (err) {
+    return { success: false, exists: false, isDirectory: false, error: err.message };
+  }
 });
 
 ipcMain.handle('runsList', async (_event, { projectPath }) => {
@@ -783,6 +848,214 @@ ipcMain.handle('appSafeMode', async () => {
   return { success: true, safe_mode: process.argv.includes('--safe-mode') || process.env.SAFE_MODE === '1' };
 });
 
+ipcMain.handle('quitApp', async () => {
+  app.quit();
+});
+
+// ---- Watch Mode ----
+
+let watchModeInterval = null;
+let watchModeActive = false;
+
+function notesCreateNote() {
+  return new Promise((resolve, reject) => {
+    const script = `
+      try
+        tell application "Notes"
+          activate
+          set noteExists to false
+          repeat with n in every note
+            if name of n is "Sompter Chat" then
+              set noteExists to true
+              exit repeat
+            end if
+          end repeat
+          if not noteExists then
+            make new note at folder "Notes" with properties {name:"Sompter Chat", body:"Sompter Chat (watch mode)"}
+          end if
+        end tell
+      end try
+    `;
+    execFile('osascript', ['-e', script], (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+function notesAppend(text) {
+  return new Promise((resolve, reject) => {
+    // Write text to a temp file to avoid AppleScript string escaping issues
+    const tmpFile = path.join(os.tmpdir(), 'sompter-notes-' + Date.now() + '.txt');
+    fs.writeFileSync(tmpFile, '\n' + text, 'utf-8');
+    const script = `
+      try
+        tell application "Notes"
+          set n to first note whose name is "Sompter Chat"
+          set f to (POSIX file "${tmpFile.replace(/"/g, '\\"')}")
+          set fileContent to (read f) as string
+          set body of n to (body of n) & fileContent
+        end tell
+      end try
+    `;
+    execFile('osascript', ['-e', script], (err) => {
+      fs.unlink(tmpFile, () => {});
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+function notesReadLatest() {
+  return new Promise((resolve, reject) => {
+    const tmpFile = path.join(os.tmpdir(), 'sompter-notes-read-' + Date.now() + '.txt');
+    const script = `
+      try
+        tell application "Notes"
+          set n to first note whose name is "Sompter Chat"
+          set noteBody to body of n
+          set f to (POSIX file "${tmpFile.replace(/"/g, '\\"')}")
+          set fileRef to open for access f with write permission
+          write noteBody to fileRef as text
+          close access fileRef
+        end tell
+      end try
+    `;
+    execFile('osascript', ['-e', script], { maxBuffer: 1024 * 1024 }, (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      let body = '';
+      try {
+        body = fs.readFileSync(tmpFile, 'utf-8').trim();
+      } catch {}
+      fs.unlink(tmpFile, () => {});
+      const lines = body.split('\n');
+      const userMessages = lines
+        .filter(l => l.match(/^You:/))
+        .slice(-5);
+      resolve(userMessages);
+    });
+  });
+}
+
+ipcMain.handle('startWatchMode', async () => {
+  if (watchModeActive) return { success: true, message: 'Already running' };
+  try {
+    await notesCreateNote();
+    watchModeActive = true;
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('watch-status', { active: true });
+    }
+    watchModeInterval = setInterval(async () => {
+      try {
+        const tmpFile = path.join(os.tmpdir(), 'sompter-watch-' + Date.now() + '.png');
+        await new Promise((res, rej) => {
+          execFile('screencapture', ['-x', '-t', 'png', tmpFile], (err) => {
+            if (err) rej(err); else res();
+          });
+        });
+        const resizedFile = path.join(os.tmpdir(), 'sompter-watch-resized-' + Date.now() + '.png');
+        try {
+          await new Promise((res, rej) => {
+            execFile('sips', ['-Z', '800', tmpFile, '--out', resizedFile], (err) => {
+              if (err) rej(err); else res();
+            });
+          });
+        } catch { fs.copyFileSync(tmpFile, resizedFile); }
+        const buf = fs.readFileSync(resizedFile);
+        fs.unlink(tmpFile, () => {});
+        fs.unlink(resizedFile, () => {});
+        const b64 = buf.toString('base64');
+        let activeApp = '';
+        try {
+          const appResult = await new Promise((res, rej) => {
+            execFile('osascript', ['-e', 'tell application "System Events" to get name of first process whose frontmost is true'], (err, stdout) => {
+              if (err) rej(err); else res(stdout.trim());
+            });
+          });
+          activeApp = appResult;
+        } catch {}
+        let notesMsg = '';
+        try {
+          const msgs = await notesReadLatest();
+          if (msgs.length > 0) notesMsg = msgs.join('\n');
+        } catch {}
+        const r = await fetch(`${BACKEND}/api/watch/analyze-screen`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ screenshot_b64: b64, active_app: activeApp, notes_message: notesMsg, search_web: false }),
+        });
+        const data = await r.json();
+        if (data.reply && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('watch-chunk', { reply: data.reply, timestamp: Date.now() });
+          try {
+            await notesAppend('\n🤖 Sompter: ' + data.reply);
+          } catch {}
+        }
+      } catch (err) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('watch-chunk', { reply: `Watch error: ${err.message}`, timestamp: Date.now() });
+        }
+      }
+    }, 5000);
+    return { success: true, message: 'Watch mode started' };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('stopWatchMode', async () => {
+  watchModeActive = false;
+  if (watchModeInterval) {
+    clearInterval(watchModeInterval);
+    watchModeInterval = null;
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('watch-status', { active: false });
+  }
+  return { success: true, message: 'Watch mode stopped' };
+});
+
+ipcMain.handle('getWatchStatus', async () => {
+  return { active: watchModeActive };
+});
+
+ipcMain.handle('notesSend', async (_event, text) => {
+  try {
+    await notesAppend(text);
+    return { success: true };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+});
+
+ipcMain.handle('notesRead', async () => {
+  try {
+    const msgs = await notesReadLatest();
+    return { success: true, messages: msgs };
+  } catch (err) {
+    return { success: false, message: err.message, messages: [] };
+  }
+});
+
+ipcMain.handle('notesOpenNote', async () => {
+  try {
+    // Try to activate Notes app using AppleScript
+    execFile('osascript', ['-e', 'tell application "Notes" to activate']);
+    return { success: true };
+  } catch (err) {
+    try {
+      // Fallback: try to open a notes URL
+      execFile('open', ['x-apple-notes://']);
+      return { success: true };
+    } catch (err2) {
+      return { success: false, message: err2.message };
+    }
+  }
+});
+
 // ---- About / Version IPC ----
 
 ipcMain.handle('getAboutInfo', async () => {
@@ -817,8 +1090,9 @@ ipcMain.handle('getAboutInfo', async () => {
       openai_model: '-',
       backend_url: 'http://localhost:8787',
       opencode_port: 4096,
-      release_notes: [
-        { title: 'Browser Control Mode (Playwright)', step: '35' },
+        release_notes: [
+          { title: 'Watch Mode + Apple Notes Chat', step: '36' },
+          { title: 'Browser Control Mode (Playwright)', step: '35' },
         { title: 'About / Release Notes Panel', step: '34' },
         { title: 'Final Release Test', step: '33' },
         { title: 'First-Run Onboarding', step: '32' },

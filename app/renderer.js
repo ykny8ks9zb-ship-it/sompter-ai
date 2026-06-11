@@ -2,6 +2,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   ask: (prompt) => ipcRenderer.invoke('ask', { prompt }),
+  startAskStream: (prompt) => ipcRenderer.invoke('startAskStream', { prompt }),
+  onChatChunk: (callback) => {
+    ipcRenderer.on('chat-chunk', (_event, data) => callback(data));
+  },
   controlPlan: () => ipcRenderer.invoke('controlPlan'),
   runAction: (action, params) => ipcRenderer.invoke('runAction', { action, params }),
   runBrowserAction: (action, params) => ipcRenderer.invoke('runBrowserAction', { action, params }),
@@ -37,6 +41,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Folder selection
   selectFolder: () => ipcRenderer.invoke('selectFolder'),
+  checkPathExists: (p) => ipcRenderer.invoke('checkPathExists', { path: p }),
 
   // Smart Fix
   smartFix: (projectPath, projectName, userPrompt) => ipcRenderer.invoke('smartFix', { projectPath, projectName, userPrompt }),
@@ -81,5 +86,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Global toggle
   onGlobalToggle: (callback) => {
     ipcRenderer.on('global-toggle', () => callback());
+  },
+
+  quitApp: () => ipcRenderer.invoke('quitApp'),
+
+  // Watch Mode
+  startWatchMode: () => ipcRenderer.invoke('startWatchMode'),
+  stopWatchMode: () => ipcRenderer.invoke('stopWatchMode'),
+  getWatchStatus: () => ipcRenderer.invoke('getWatchStatus'),
+  notesSend: (text) => ipcRenderer.invoke('notesSend', text),
+  notesRead: () => ipcRenderer.invoke('notesRead'),
+  notesOpenNote: () => ipcRenderer.invoke('notesOpenNote'),
+  onWatchChunk: (callback) => {
+    ipcRenderer.on('watch-chunk', (_event, data) => callback(data));
+  },
+  onWatchStatus: (callback) => {
+    ipcRenderer.on('watch-status', (_event, data) => callback(data));
   },
 });

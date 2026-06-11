@@ -1,4 +1,8 @@
-You are working inside this local project. The user wants: add a comment to the README saying hello world
+You are working inside this local project. The user wants: Fix the issue visible on my screen and any code problems in this project.
 Find the issue, explain it shortly, make safe code changes only, and run tests if available.
 Do not delete files. Do not use sudo. Do not touch .env/auth/API keys.
 If a risky command is needed, stop and explain.
+
+Screenshot context: Here's a description of the screenshot:
+
+The image shows a dark-themed desktop with multiple windows open. A program called "Sompter AI" is prominently displayed on the right side, featuring options related to screen recording and project management; it seems like someone might be configuring this software or working within its interface. On the left, there's a weather widget displaying information for Charleston, SC, along with what appears to be a personal photo visible in another window.

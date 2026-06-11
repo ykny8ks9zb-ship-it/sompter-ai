@@ -46,6 +46,7 @@
       <button class="gear-item" id="gear-diagnostics">🔬 Diagnostics</button>
       <button class="gear-item" id="gear-setup">⚙ Setup</button>
       <button class="gear-item" id="gear-onboarding">📖 Setup Guide</button>
+      <button class="gear-item" id="gear-watch">👁 Watch</button>
       <button class="gear-item" id="gear-about">ℹ️ About</button>
     </div>
 
@@ -252,6 +253,43 @@
         <pre id="diagnostics-text">Loading...</pre>
       </div>
       <div id="diagnostics-result" class="hidden"></div>
+    </div>
+
+    <div id="watch-panel" class="hidden">
+      <div id="watch-header">
+        <span>👁 Watch Mode</span>
+        <button id="watch-close-btn" class="small-btn">✕</button>
+      </div>
+      <div id="watch-content">
+        <div id="watch-status-row">
+          <span class="watch-dot" id="watch-dot"></span>
+          <span id="watch-status-text">Off</span>
+          <button id="watch-toggle-btn" class="small-btn">Start</button>
+        </div>
+        <div id="watch-info">
+          <div class="watch-row">
+            <span class="watch-label">Screen:</span>
+            <span class="watch-value" id="watch-screen-info">—</span>
+          </div>
+          <div class="watch-row">
+            <span class="watch-label">App:</span>
+            <span class="watch-value" id="watch-active-app">—</span>
+          </div>
+          <div class="watch-row">
+            <span class="watch-label">Notes:</span>
+            <span class="watch-value" id="watch-notes-msg">—</span>
+          </div>
+        </div>
+        <div id="watch-summary" class="hidden">
+          <div class="watch-summary-label">Latest Observation</div>
+          <div id="watch-summary-text"></div>
+        </div>
+        <div id="watch-error" class="hidden"></div>
+        <div id="watch-buttons">
+          <button id="watch-open-notes-btn" class="setup-btn">📝 Open Sompter Chat</button>
+          <button id="watch-emergency-btn" class="setup-btn watch-emergency">🛑 Emergency Stop</button>
+        </div>
+      </div>
     </div>
 
     <div id="onboarding-panel" class="hidden">
@@ -473,7 +511,7 @@
           <button id="project-delete-btn" class="small-btn" title="Delete selected profile">✕</button>
         </div>
         <div class="field-row">
-          <input type="text" id="opencode-path" class="action-param" placeholder="/path/to/project" readonly />
+          <input type="text" id="opencode-path" class="action-param" placeholder="/path/to/project" />
           <button id="project-choose-btn" class="small-btn">Choose</button>
           <button id="project-save-btn" class="small-btn">Save As</button>
         </div>
@@ -552,6 +590,7 @@
 
     <div id="chat-container">
       <div id="chat-log"></div>
+      <button id="scroll-bottom-btn">↓ New responses</button>
     </div>
 
     <div id="input-area">
@@ -621,7 +660,7 @@
 
       $('#tab-quit-btn').addEventListener('click', (e) => {
         e.stopPropagation();
-        window.close();
+        window.electronAPI.quitApp();
       });
     }
 
@@ -669,6 +708,15 @@
         aboutPanel.classList.remove('hidden');
         aboutResult.classList.add('hidden');
         refreshAboutPanel();
+      } else if (action === 'start-watch') {
+        hideAllPanelsExcept('watch-panel');
+        watchPanel.classList.remove('hidden');
+        watchVisible = true;
+        if (!watchActive) watchToggle.click();
+      } else if (action === 'stop-watch') {
+        watchVisible = true;
+        watchPanel.classList.remove('hidden');
+        if (watchActive) watchEmergencyBtn.click();
       }
     });
 
@@ -742,6 +790,7 @@
     // ---- Existing app code ----
 
     const chatLog = $('#chat-log');
+    const chatContainer = $('#chat-container');
     const chatInput = $('#chat-input');
     const sendBtn = $('#send-btn');
     const statusDot = $('#status-dot');
@@ -822,36 +871,149 @@
       planSummary.textContent = 'Analyzing screen...';
     }
 
-    function addMessage(role, text) {
+    function escapeHtml(t) {
+      if (!t) return '';
+      return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function renderMarkdown(text) {
+      if (!text) return '';
+      let html = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+
+      // Code blocks (protect from further processing)
+      html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, _lang, code) => {
+        return '<pre><code>' + code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</code></pre>';
+      });
+
+      // Inline code
+      html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+      // Links
+      html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+      // Bold & italic
+      html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+      // Blockquotes
+      html = html.replace(/^&gt;\s?(.*)$/gm, '<blockquote>$1</blockquote>');
+
+      // List items
+      let inList = false;
+      const lines = html.split('\n');
+      const out = [];
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (/^<li>/.test(l)) {
+          if (!inList) { out.push('<ul>'); inList = true; }
+          out.push(l);
+        } else {
+          if (inList) { out.push('</ul>'); inList = false; }
+          out.push(l);
+        }
+      }
+      if (inList) out.push('</ul>');
+      html = out.join('\n');
+
+      // Paragraphs
+      const paras = html.split(/\n\n+/);
+      html = paras.map(p => {
+        p = p.trim();
+        if (!p) return '';
+        if (/^<(pre|ul|ol|blockquote|li|h[1-6])/.test(p)) return p;
+        return '<p>' + p.replace(/\n/g, '<br>') + '</p>';
+      }).join('\n');
+
+      return html;
+    }
+
+    function scrollToBottom() {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+      scrollBtn.classList.remove('visible');
+    }
+
+    function showSkeleton() {
+      const el = document.createElement('div');
+      el.className = 'skeleton-message';
+      el.id = 'skeleton-loader';
+      el.innerHTML = '<div class="skeleton-avatar"></div><div class="skeleton-lines"><div class="skeleton-line"></div><div class="skeleton-line"></div><div class="skeleton-line"></div></div>';
+      chatLog.appendChild(el);
+      scrollToBottom();
+      return el;
+    }
+
+    function removeSkeleton() {
+      const el = document.getElementById('skeleton-loader');
+      if (el) el.remove();
+    }
+
+    function addMessage(role, text, isStreaming) {
       const el = document.createElement('div');
       el.className = `message ${role}`;
-      el.textContent = text;
+      const ts = new Date();
+      const timeStr = ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const icon = role === 'user' ? '👤' : '🤖';
+      const label = role === 'user' ? 'You' : 'Sompter';
+
+      const contentHtml = role === 'assistant' ? renderMarkdown(text) : escapeHtml(text);
+      el.innerHTML = `
+        <div class="msg-header">
+          <span class="msg-icon">${icon}</span>
+          <span class="msg-label">${label}</span>
+          <span class="msg-time">${timeStr}</span>
+        </div>
+        <div class="msg-content${isStreaming ? ' streaming' : ''}">${contentHtml}</div>
+        <button class="msg-copy" title="Copy message">📋</button>
+      `;
+
+      el.querySelector('.msg-copy').addEventListener('click', function () {
+        navigator.clipboard.writeText(text).catch(() => {});
+        this.textContent = '✓';
+        this.classList.add('copied');
+        setTimeout(() => { this.textContent = '📋'; this.classList.remove('copied'); }, 1500);
+      });
+
       chatLog.appendChild(el);
-      chatLog.scrollTop = chatLog.scrollHeight;
+      scrollToBottom();
+      return el;
+    }
+
+    let autoCollapseTimer = null;
+
+    function cancelAutoCollapse() {
+      if (autoCollapseTimer) {
+        clearTimeout(autoCollapseTimer);
+        autoCollapseTimer = null;
+      }
     }
 
     function autoCollapse() {
-      setTimeout(async () => {
+      cancelAutoCollapse();
+      autoCollapseTimer = setTimeout(async () => {
+        autoCollapseTimer = null;
         const st = readState();
         st.collapsed = true;
         writeState(st);
         await window.electronAPI.collapseWindow(st.y);
-      }, 500);
+      }, 15000);
     }
+
+    document.addEventListener('pointerdown', cancelAutoCollapse);
+    document.addEventListener('wheel', cancelAutoCollapse, { passive: true });
 
     async function startControl() {
       setMode('screen');
       addMessage('user', 'Control Mac');
       controlPanel.classList.remove('hidden');
 
-      const loading = document.createElement('div');
-      loading.className = 'message assistant loading';
-      loading.textContent = 'Analyzing screen for action plan...';
-      chatLog.appendChild(loading);
+      const loadingEl = showSkeleton();
 
       try {
         const plan = await window.electronAPI.controlPlan();
-        loading.remove();
+        removeSkeleton();
 
         if (plan.success) {
           const msg = `Summary: ${plan.summary}\nSuggested: ${plan.recommended_action.reason}`;
@@ -864,7 +1026,7 @@
 
         displayPlan(plan);
       } catch (err) {
-        loading.remove();
+        if (loadingEl) loadingEl.remove();
         addMessage('assistant', `Error: ${err.message}`);
         setMode('ask');
         addHistoryEntry('control', 'Control Mac', err.message, 'failed');
@@ -1250,10 +1412,13 @@
     }
 
     async function smartFix() {
+      if (_sending) return;
+      _sending = true;
       const active = getActiveProfile();
       const projectPath = active ? active.path : $('#opencode-path').value.trim();
       if (!projectPath) {
         addMessage('assistant', 'Please select or save a project first.');
+        _sending = false;
         return;
       }
 
@@ -1313,6 +1478,8 @@
         opencodeReview.classList.remove('hidden');
         addHistoryEntry('opencode', 'Smart Fix', err.message, 'failed');
         window.electronAPI.showNotification('Smart Fix', 'Smart Fix error: ' + err.message);
+      } finally {
+        _sending = false;
       }
     }
 
@@ -1378,6 +1545,10 @@
       gearOpen = false;
       gearPopup.classList.add('hidden');
     }
+
+    $('#smartfix-btn').addEventListener('click', async () => {
+      await smartFix();
+    });
 
     $('#gear-prompts').addEventListener('click', () => {
       hideAllPanels();
@@ -1445,6 +1616,14 @@
       gearOpen = false;
       gearPopup.classList.add('hidden');
       if (typeof showOnboarding === 'function') showOnboarding(1);
+    });
+
+    $('#gear-watch').addEventListener('click', () => {
+      hideAllPanels();
+      hideAllPanelsExcept('watch-panel');
+      watchVisible = !watchVisible;
+      watchPanel.classList.toggle('hidden', !watchVisible);
+      if (watchVisible) refreshWatchStatus();
     });
 
     $('#gear-about').addEventListener('click', () => {
@@ -1704,14 +1883,18 @@
       validateProjectPath();
     }
 
-    function validateProjectPath() {
-      const path = $('#opencode-path').value;
+    async function validateProjectPath() {
+      const path = $('#opencode-path').value.trim();
       const warn = $('#project-path-warn');
-      if (path) {
-        const exists = window.electronAPI ? true : false;
-        warn.classList.toggle('hidden', true);
-      } else {
+      if (!path) {
         warn.classList.add('hidden');
+        return;
+      }
+      const result = await window.electronAPI.checkPathExists(path);
+      if (result.exists && result.isDirectory) {
+        warn.classList.add('hidden');
+      } else {
+        warn.classList.remove('hidden');
       }
     }
 
@@ -1731,10 +1914,31 @@
     async function initProjectProfile() {
       const profiles = loadProfiles();
       if (profiles.length === 0) {
-        const savedPath = localStorage.getItem('sompter_opencode_path');
+        let savedPath = localStorage.getItem('sompter_opencode_path');
+        if (!savedPath) {
+          try {
+            const resp = await fetch('http://localhost:8787/api/settings');
+            const s = await resp.json();
+            if (s.project_path) savedPath = s.project_path;
+          } catch {}
+        }
         if (savedPath) {
           $('#opencode-path').value = savedPath;
+          const name = savedPath.split('/').pop() || 'Project';
+          const existing = profiles.find(p => p.path === savedPath);
+          if (!existing) {
+            profiles.push({
+              id: 'proj_' + Date.now().toString(36),
+              name: name,
+              path: savedPath,
+              isDefault: true,
+              lastUsed: new Date().toISOString(),
+            });
+            saveProfiles(profiles);
+            currentProfileId = profiles[0].id;
+          }
         }
+        renderProjectSelect();
         return;
       }
       const active = getActiveProfile();
@@ -1842,36 +2046,116 @@
       renderProjectSelect();
     });
 
+    $('#opencode-path').addEventListener('input', validateProjectPath);
+
     // ---- Init profiles on load ----
     initProjectProfile();
 
     chatInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        sendBtn.click();
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (!_sending) sendBtn.click();
+      }
+    });
+
+    // Scroll-to-bottom button
+    const scrollBtn = $('#scroll-bottom-btn');
+
+    chatContainer.addEventListener('scroll', () => {
+      const threshold = 60;
+      const dist = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight;
+      scrollBtn.classList.toggle('visible', dist > threshold);
+      if (dist > threshold) {
+        cancelAutoCollapse();
+      }
+    });
+
+    scrollBtn.addEventListener('click', scrollToBottom);
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        const panelIds = ['prompts-panel', 'history-panel', 'setup-panel', 'models-panel', 'diagnostics-panel', 'services-panel', 'onboarding-panel', 'about-panel', 'gear-popup', 'prompts-editor'];
+        let anyOpen = false;
+        panelIds.forEach(id => {
+          const el = document.getElementById(id);
+          if (el && !el.classList.contains('hidden')) {
+            anyOpen = true;
+            if (id === 'gear-popup') gearOpen = false;
+            el.classList.add('hidden');
+          }
+        });
+        if (anyOpen) {
+          promptsPanelVisible = false; editorVisible = false; historyVisible = false;
+          setupVisible = false; modelsVisible = false; diagnosticsVisible = false;
+          servicesVisible = false; onboardingVisible = false; aboutVisible = false;
+        }
+      }
+    });
+
+    let streamingMsgEl = null;
+    let streamingFullText = '';
+    let streamingPrompt = '';
+    let isStreaming = false;
+    let _sending = false;
+    let streamStarted = false;
+
+    window.electronAPI.onChatChunk((data) => {
+      if (data.chunk && streamingMsgEl) {
+        if (!streamStarted) {
+          streamStarted = true;
+          removeSkeleton();
+        }
+        streamingFullText += data.chunk;
+        const contentEl = streamingMsgEl.querySelector('.msg-content');
+        if (contentEl) {
+          contentEl.innerHTML = renderMarkdown(streamingFullText);
+          scrollToBottom();
+        }
+      }
+      if (data.done) {
+        if (streamingMsgEl) {
+          streamingMsgEl.querySelector('.msg-content').classList.remove('streaming');
+        }
+        const hasError = streamingFullText && (
+          streamingFullText.includes('Error:') || streamingFullText.includes('AI error')
+        );
+        addHistoryEntry('chat', streamingPrompt, streamingFullText, hasError ? 'failed' : 'success');
+        streamingMsgEl = null;
+        streamingFullText = '';
+        streamingPrompt = '';
+        isStreaming = false;
+        streamStarted = false;
+        _sending = false;
+        removeSkeleton();
+        if (!hasError) autoCollapse();
       }
     });
 
     async function ask(prompt) {
-      if (!prompt.trim()) return;
+      if (!prompt.trim() || _sending) return;
+      _sending = true;
       addMessage('user', prompt);
       chatInput.value = '';
 
-      const loading = document.createElement('div');
-      loading.className = 'message assistant loading';
-      loading.textContent = 'Thinking...';
-      chatLog.appendChild(loading);
+      streamingPrompt = prompt;
+      streamingFullText = '';
+      isStreaming = true;
+      streamingMsgEl = addMessage('assistant', '', true);
+      showSkeleton();
 
       try {
-        const result = await window.electronAPI.ask(prompt);
-        loading.remove();
-        const msg = result.message || result.answer || result;
-        addMessage('assistant', typeof msg === 'string' ? msg : JSON.stringify(msg));
-        addHistoryEntry('chat', prompt, msg, 'success');
-        autoCollapse();
+        window.electronAPI.startAskStream(prompt);
       } catch (err) {
-        loading.remove();
-        addMessage('assistant', `Error: ${err.message}`);
+        isStreaming = false;
+        _sending = false;
+        removeSkeleton();
+        if (streamingMsgEl) {
+          streamingMsgEl.querySelector('.msg-content').classList.remove('streaming');
+          streamingMsgEl.querySelector('.msg-content').innerHTML = renderMarkdown(`Error: ${err.message}`);
+        }
         addHistoryEntry('chat', prompt, err.message, 'failed');
+        streamingMsgEl = null;
       }
     }
 
@@ -2010,12 +2294,34 @@
     });
 
     $('#setup-open-folder-btn').addEventListener('click', async () => {
-      const active = getActiveProfile();
-      const path = active ? active.path : localStorage.getItem('sompter_opencode_path');
-      if (path) {
-        await window.electronAPI.openFolder(path);
-      } else {
-        showSetupResult(false, 'No project path set');
+      const result = await window.electronAPI.selectFolder();
+      if (result.success && result.path) {
+        $('#opencode-path').value = result.path;
+        localStorage.setItem('sompter_opencode_path', result.path);
+        currentProfileId = null;
+        renderProjectSelect();
+        const name = result.path.split('/').pop() || 'Project';
+        const profiles = loadProfiles();
+        const existing = profiles.find(p => p.path === result.path);
+        if (existing) {
+          currentProfileId = existing.id;
+          existing.lastUsed = new Date().toISOString();
+          saveProfiles(profiles);
+        } else {
+          const profile = {
+            id: 'proj_' + Date.now().toString(36),
+            name: name,
+            path: result.path,
+            isDefault: profiles.length === 0,
+            lastUsed: new Date().toISOString(),
+          };
+          profiles.push(profile);
+          saveProfiles(profiles);
+          currentProfileId = profile.id;
+        }
+        renderProjectSelect();
+        showSetupResult(true, 'Project set: ' + name);
+        await refreshSetupStatus();
       }
     });
 
@@ -2250,14 +2556,7 @@
       }
     }
 
-    $('#models-btn').addEventListener('click', () => {
-      modelsVisible = !modelsVisible;
-      modelsPanel.classList.toggle('hidden', !modelsVisible);
-      if (modelsVisible) {
-        modelsResult.classList.add('hidden');
-        loadModelsSettings();
-      }
-    });
+    // Removed: #models-btn no longer exists (replaced by gear popup -> #gear-models)
 
     $('#models-close-btn').addEventListener('click', () => {
       modelsVisible = false;
@@ -2332,14 +2631,7 @@
       setTimeout(() => { servicesResult.classList.add('hidden'); }, 5000);
     }
 
-    $('#services-btn').addEventListener('click', () => {
-      servicesVisible = !servicesVisible;
-      servicesPanel.classList.toggle('hidden', !servicesVisible);
-      if (servicesVisible) {
-        servicesResult.classList.add('hidden');
-        updateServiceStatus();
-      }
-    });
+    // Removed: #services-btn no longer exists (replaced by gear popup -> #gear-services)
 
     $('#services-close-btn').addEventListener('click', () => {
       servicesVisible = false;
@@ -2364,6 +2656,92 @@
         }
         await runServiceAction(action);
       });
+    });
+
+    // ---- Watch Mode Panel ----
+
+    let watchVisible = false;
+    let watchActive = false;
+    const watchPanel = $('#watch-panel');
+    const watchDot = $('#watch-dot');
+    const watchStatusText = $('#watch-status-text');
+    const watchToggleBtn = $('#watch-toggle-btn');
+    const watchScreenInfo = $('#watch-screen-info');
+    const watchActiveApp = $('#watch-active-app');
+    const watchNotesMsg = $('#watch-notes-msg');
+    const watchSummary = $('#watch-summary');
+    const watchSummaryText = $('#watch-summary-text');
+    const watchError = $('#watch-error');
+    const watchToggle = $('#watch-toggle-btn');
+    const watchEmergencyBtn = $('#watch-emergency-btn');
+    const watchOpenNotesBtn = $('#watch-open-notes-btn');
+
+    async function refreshWatchStatus() {
+      const st = await window.electronAPI.getWatchStatus();
+      watchActive = st.active;
+      updateWatchUI();
+    }
+
+    function updateWatchUI() {
+      watchDot.className = 'watch-dot ' + (watchActive ? 'watch-dot-on' : 'watch-dot-off');
+      watchStatusText.textContent = watchActive ? 'Watching...' : 'Off';
+      watchToggleBtn.textContent = watchActive ? 'Stop' : 'Start';
+    }
+
+    watchToggle.addEventListener('click', async () => {
+      if (watchActive) {
+        const r = await window.electronAPI.stopWatchMode();
+        if (r.success) {
+          watchActive = false;
+          updateWatchUI();
+          watchSummary.classList.add('hidden');
+        }
+      } else {
+        const r = await window.electronAPI.startWatchMode();
+        if (r.success) {
+          watchActive = true;
+          updateWatchUI();
+        } else {
+          watchError.textContent = r.message;
+          watchError.classList.remove('hidden');
+        }
+      }
+    });
+
+    watchEmergencyBtn.addEventListener('click', async () => {
+      const r = await window.electronAPI.stopWatchMode();
+      if (r.success) {
+        watchActive = false;
+        updateWatchUI();
+        watchSummary.classList.add('hidden');
+        watchScreenInfo.textContent = '—';
+        watchActiveApp.textContent = '—';
+        watchNotesMsg.textContent = '—';
+        watchError.classList.add('hidden');
+      }
+    });
+
+    watchOpenNotesBtn.addEventListener('click', async () => {
+      const r = await window.electronAPI.notesOpenNote();
+    });
+
+    $('#watch-close-btn').addEventListener('click', () => {
+      watchPanel.classList.add('hidden');
+      watchVisible = false;
+    });
+
+    window.electronAPI.onWatchChunk((data) => {
+      watchSummary.classList.remove('hidden');
+      watchSummaryText.textContent = data.reply;
+      watchError.classList.add('hidden');
+    });
+
+    window.electronAPI.onWatchStatus((data) => {
+      watchActive = data.active;
+      updateWatchUI();
+      if (!data.active) {
+        watchSummary.classList.add('hidden');
+      }
     });
 
     // ---- About Panel ----
@@ -2558,13 +2936,21 @@
     }
 
     function hideAllPanelsExcept(excludeId) {
-      const panels = ['#prompts-panel', '#history-panel', '#setup-panel', '#models-panel', '#diagnostics-panel', '#services-panel', '#onboarding-panel'];
+      const panels = ['#prompts-panel', '#history-panel', '#setup-panel', '#models-panel', '#diagnostics-panel', '#services-panel', '#onboarding-panel', '#watch-panel', '#about-panel'];
       panels.forEach(sel => {
         if (sel !== '#' + excludeId) {
           const p = document.querySelector(sel);
           if (p) p.classList.add('hidden');
         }
       });
+      if (excludeId) {
+        const shown = document.querySelector('#' + excludeId);
+        if (shown && shown.classList.contains('hidden')) {
+          shown.classList.remove('hidden');
+          shown.classList.add('panel-slide');
+          setTimeout(() => shown.classList.remove('panel-slide'), 300);
+        }
+      }
     }
 
     // Navigation
@@ -2694,14 +3080,6 @@
       const input = $('#chat-input');
       if (input) {
         input.value = 'Explain what is on my screen';
-        const modeRadio = document.querySelector('#preset-buttons input[name="mode"]:checked') ||
-                         document.querySelector('input[name="mode"][value="screen"]');
-        if (modeRadio) {
-          // Find closest preset button with mode=screen and click
-          const screenPreset = document.querySelector('#preset-buttons .preset-btn[data-mode="screen"]');
-          if (screenPreset) screenPreset.click();
-        }
-        // Trigger ask
         $('#send-btn')?.click();
       }
     });
