@@ -8,6 +8,9 @@ dist/
 out/
 
 
+# Runtime data
+.sompter/
+
 # Large build artifacts
 *.zip
 release/

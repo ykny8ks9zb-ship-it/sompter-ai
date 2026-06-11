@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.sompter-ai.watch</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/charliekrason/Documents/desk/untitled folder/sompter-ai/.venv/bin/python3</string>
+        <string>/Users/charliekrason/Documents/desk/untitled folder/sompter-ai/scripts/watch-daemon.py</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/sompter-watch-daemon.stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/tmp/sompter-watch-daemon.stderr.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>SOMPTER_BACKEND_URL</key>
+        <string>http://localhost:8787</string>
+        <key>SOMPTER_WATCH_INTERVAL</key>
+        <string>15</string>
+        <key>SOMPTER_WATCH_LOG</key>
+        <string>/tmp/sompter-watch-daemon.log</string>
+        <key>SOMPTER_PROJECT_DIR</key>
+        <string>/Users/charliekrason/Documents/desk/untitled folder/sompter-ai</string>
+        <key>SOMPTER_MEMORY_DB</key>
+        <string>/Users/charliekrason/Documents/desk/untitled folder/sompter-ai/.sompter/memory.db</string>
+        <key>PATH</key>
+        <string>/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/charliekrason/Documents/desk/untitled folder/sompter-ai</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>Nice</key>
+    <integer>10</integer>
+
+    <key>LowPriorityIO</key>
+    <true/>
+
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+</dict>
+</plist>

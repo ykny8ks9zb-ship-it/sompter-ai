@@ -194,7 +194,7 @@ class TestRunRequest(BaseModel):
 
 def web_search(query: str, num: int = 5) -> str:
     try:
-        from duckduckgo_search import DDGS
+        from ddgs import DDGS
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=num))
         if not results:
@@ -1093,6 +1093,7 @@ class WatchAnalyzeRequest(BaseModel):
     active_app: str = ""
     notes_message: str = ""
     search_web: bool = False
+    memory_context: str = ""
 
 
 @app.post("/api/watch/analyze-screen")
@@ -1101,23 +1102,45 @@ async def watch_analyze_screen(req: WatchAnalyzeRequest):
         system_prompt = "You are a proactive Mac assistant watching the user's screen continuously. Be insightful and thorough."
         if req.active_app:
             system_prompt += f"\n\nActive application: {req.active_app}"
-        if req.notes_message:
-            system_prompt += f"\n\nThe user wrote in their notes: {req.notes_message}. Address what they asked about."
+
+        # Build search context from user's notes message
+        search_context = ""
         if req.search_web:
-            system_prompt += " Use web search to fetch the latest news, sports scores, or relevant information."
-        
+            query = req.notes_message if req.notes_message else "latest news, sports scores, current events"
+            try:
+                search_context = web_search(query, num=5)
+                if search_context and search_context != "No results found.":
+                    system_prompt += f"\n\n[SEARCH RESULTS FOR: {query}]\n{search_context}"
+            except Exception:
+                pass
+
+        with open("/tmp/sompter-watch-debug.txt", "a") as f:
+            f.write(f"search_web={req.search_web} notes={req.notes_message!r} ctx_len={len(search_context) if search_context else 0}\n")
+            f.write(f"ctx={str(search_context)[:500]!r}\n")
+
+        if req.memory_context:
+            system_prompt += f"\n\n[RECENT CONTEXT FROM YOUR SESSIONS]\n{req.memory_context}"
+        if req.notes_message:
+            system_prompt += f"\n\nThe user wrote in their notes: {req.notes_message}. Answer their question directly."
+
+        has_web = bool(search_context and search_context != "No results found.")
         prompt = (
             "Look at everything on screen — apps, tabs, code, news, scores, documents, etc. "
             "Report on what's happening in detail. If you see sports scores, news headlines, "
-            "or market data, report the latest. If the user left a message in their notes, "
-            "answer it directly. Use web search for current information (scores, news, weather, stocks). "
-            "Be informative and proactive — the user wants to get smarter from this feed."
+            "or market data on screen, report what you see. "
+            + ("The user asked a question and Web Search RESULTS are available above in [SEARCH RESULTS]. "
+               "You MUST use those specific web search results to answer the user's question directly. "
+               "Do not offer to search — the results are already here. Report facts, dates, scores, and news from them."
+               if has_web else
+               "If the user left a message in their notes, answer it directly."
+            ) + " "
+            "Be informative and proactive."
         )
         b64 = req.screenshot_b64 if req.screenshot_b64 else None
         if b64:
-            result = call_ai(b64, prompt, system_prompt, req.search_web)
+            result = call_ai(b64, prompt, system_prompt, False)
         else:
-            result = call_ai(None, prompt, system_prompt, req.search_web)
+            result = call_ai(None, prompt, system_prompt, False)
         return {"reply": result, "needs_confirmation": False}
     except Exception as e:
         return {"reply": f"Error: {str(e)}", "needs_confirmation": False}
