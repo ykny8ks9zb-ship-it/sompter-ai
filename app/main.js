@@ -1023,6 +1023,16 @@ ipcMain.handle('getWatchStatus', async () => {
   return { active: watchModeActive };
 });
 
+ipcMain.handle('getDaemonStatus', async () => {
+  const statusPath = path.join(__dirname, '..', '.sompter', 'daemon-status.json');
+  try {
+    const data = fs.readFileSync(statusPath, 'utf-8');
+    return JSON.parse(data);
+  } catch {
+    return { status: 'stopped', pid: 0, cycle: 0, observation_count: 0 };
+  }
+});
+
 ipcMain.handle('notesSend', async (_event, text) => {
   try {
     await notesAppend(text);

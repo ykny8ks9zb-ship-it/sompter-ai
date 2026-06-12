@@ -3,6 +3,7 @@ import os
 import sqlite3
 import sys
 import tempfile
+from datetime import datetime
 
 # Import watch-daemon.py (hyphenated filename — use importlib)
 _scripts_dir = os.path.join(os.path.dirname(__file__), "..", "scripts")
@@ -162,10 +163,11 @@ class TestDetectPatterns:
                     notes_message TEXT
                 )
             """)
+            now = datetime.now()
             for i in range(3):
                 conn.execute(
                     "INSERT INTO observations (timestamp, notes_message) VALUES (?, ?)",
-                    (f"2026-06-11T13:{0+i:02d}:00", "what is the weather?"),
+                    (f"{now.year:04d}-{now.month:02d}-{now.day:02d}T{now.hour:02d}:{0+i:02d}:00", "what is the weather?"),
                 )
             conn.commit()
             conn.close()

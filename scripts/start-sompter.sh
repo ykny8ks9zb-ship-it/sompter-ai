@@ -36,6 +36,7 @@ if curl -sf http://localhost:$OPENCODE_PORT/global/health > /dev/null 2>&1; then
   echo "✅ OpenCode serve already running on :$OPENCODE_PORT"
 else
   echo "🚀 Starting OpenCode serve..."
+  set -a; source "$PROJECT_DIR/.env"; set +a
   opencode serve --port "$OPENCODE_PORT" > /tmp/sompter-opencode.log 2>&1 &
   OPENCODE_PID=$!
   sleep 3

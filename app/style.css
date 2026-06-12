@@ -998,6 +998,18 @@ textarea.action-param {
   border-color: #ef4444 !important;
 }
 
+.watch-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: #a78bfa;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 8px 0 4px;
+}
+#watch-daemon-status {
+  margin-bottom: 4px;
+}
+
 #setup-panel {
   background: #1e1e38;
   border: 1px solid #3d3d5c;

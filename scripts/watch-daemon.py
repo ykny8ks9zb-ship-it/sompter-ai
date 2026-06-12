@@ -19,8 +19,8 @@ import subprocess
 import sys
 import tempfile
 import time
-import urllib.error
-import urllib.request
+
+import requests
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -37,6 +37,8 @@ PROJECT_DIR = os.environ.get(
 MEMORY_DB = os.environ.get("SOMPTER_MEMORY_DB",
                            os.path.join(PROJECT_DIR, ".sompter", "memory.db"))
 PID_FILE = "/tmp/sompter-watch-daemon.pid"
+PROACTIVE_THRESHOLD = int(os.environ.get("SOMPTER_PROACTIVE_THRESHOLD", "12"))
+STATUS_FILE = os.path.join(PROJECT_DIR, ".sompter", "daemon-status.json")
 
 # ── Logging ────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -310,41 +312,42 @@ def notes_append(text: str):
 # ── Backend communication ──────────────────────────────────────────────
 def check_backend_health() -> bool:
     try:
-        req = urllib.request.Request(f"{BACKEND_URL}/api/health")
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data.get("backend", False)
+        resp = requests.get(f"{BACKEND_URL}/api/health", timeout=5)
+        return resp.json().get("backend", False)
     except Exception:
         return False
 
 
 def call_backend(
-    screenshot_b64: str, active_app: str, notes_msg: str, memory_context: str = "",
+    screenshot_b64: str, active_app: str, notes_msg: str,
+    memory_context: str = "", system_override: str = "",
 ) -> str:
-    payload = json.dumps({
+    payload_data: dict = {
         "screenshot_b64": screenshot_b64 or "",
         "active_app": active_app or "",
         "notes_message": notes_msg or "",
-        "search_web": True,
+        "search_web": not bool(system_override),
         "memory_context": memory_context or "",
-    }).encode("utf-8")
+    }
+    if system_override:
+        payload_data["system_prompt"] = system_override
 
-    req = urllib.request.Request(
-        f"{BACKEND_URL}/api/watch/analyze-screen",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data.get("reply", "")
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        log.error(f"Backend HTTP {e.code}: {body[:300]}")
+        resp = requests.post(
+            f"{BACKEND_URL}/api/watch/analyze-screen",
+            json=payload_data,
+            timeout=120,
+        )
+        resp.raise_for_status()
+        return resp.json().get("reply", "")
+    except requests.exceptions.Timeout:
+        log.error("Backend request timed out (120s)")
         return ""
-    except Exception as e:
-        log.error(f"Backend call failed: {e}")
+    except requests.exceptions.ConnectionError as e:
+        log.error(f"Backend connection failed: {e}")
+        return ""
+    except requests.exceptions.RequestException as e:
+        log.error(f"Backend request failed: {e}")
         return ""
 
 
@@ -549,6 +552,50 @@ def save_observation(
 
 
 # ── Main loop ──────────────────────────────────────────────────────────
+# ── Proactive suggestions ──────────────────────────────────────────────
+def proactive_observation(context: str, active_app: str) -> str | None:
+    prompt = (
+        "Generate a brief, interesting observation or suggestion based on "
+        "recent context. This is a proactive check — the user hasn't asked "
+        "anything. Be insightful: note what they're working on, suggest a "
+        "relevant fact or tip, or offer help. Keep it to 1-2 sentences."
+    )
+    system = (
+        "You are a proactive AI assistant. Based on recent screen context, "
+        "generate a helpful observation or suggestion. Be brief and relevant."
+        f"\n\nActive app: {active_app}"
+    )
+    if context:
+        system += f"\n\n[RECENT CONTEXT]\n{context}"
+    return call_backend("", active_app, "", context, system_override=system)
+
+
+def write_daemon_status(
+    cycle: int, status: str, active_app: str = "", notes_msg: str = "",
+    obs_count: int = 0, pattern_count: int = 0, patterns: list[str] | None = None,
+    last_obs_time: str = "",
+):
+    data = {
+        "pid": os.getpid(),
+        "status": status,
+        "cycle": cycle,
+        "active_app": active_app[:100],
+        "notes_message": notes_msg[:100] if notes_msg else "",
+        "last_observation_time": last_obs_time,
+        "observation_count": obs_count,
+        "pattern_count": pattern_count,
+        "recent_patterns": (patterns or [])[:3],
+        "memory_db": MEMORY_DB,
+        "interval": INTERVAL,
+    }
+    try:
+        os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
+        with open(STATUS_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        log.warning(f"Failed to write status: {e}")
+
+
 def main():
     global running, cycle_count
 
@@ -586,6 +633,11 @@ def main():
     else:
         log.warning("Backend not available after 60s, continuing anyway...")
 
+    # State tracking for change detection
+    last_notes_messages: tuple[str, ...] = ()
+    last_active_app = ""
+    idle_cycles = 0
+
     # Main loop
     while running:
         cycle_count += 1
@@ -595,9 +647,7 @@ def main():
         screenshot_b64 = ""
         try:
             screenshot_b64 = take_screenshot()
-            log.info(
-                f"Screenshot: {len(screenshot_b64)} bytes b64"
-            )
+            log.info(f"Screenshot: {len(screenshot_b64)} bytes b64")
         except Exception as e:
             log.error(f"Screenshot failed: {e}")
 
@@ -622,11 +672,62 @@ def main():
             log.error(f"Notes read failed: {e}")
 
         notes_msg = notes_msgs[0] if notes_msgs else ""
+        notes_messages_tuple = tuple(notes_msgs)
+
+        # ── Change detection ─────────────────────────────────────
+        # Screenshot hash is too noisy (OS compositor changes bytes each frame),
+        # so only compare semantic signals: notes messages and active app.
+        something_changed = (
+            notes_messages_tuple != last_notes_messages
+            or active_app != last_active_app
+        )
+
+        # Update tracked state
+        last_notes_messages = notes_messages_tuple
+        last_active_app = active_app
+
+        if not something_changed:
+            idle_cycles += 1
+            log.info(f"No changes detected (idle {idle_cycles}/{PROACTIVE_THRESHOLD})")
+            # Still write status so UI stays fresh
+            _patterns_list = detect_patterns()
+            conn = sqlite3.connect(MEMORY_DB)
+            obs_count = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
+            conn.close()
+            write_daemon_status(
+                cycle_count, "running, no changes", active_app, notes_msg,
+                obs_count, len(_patterns_list), _patterns_list,
+            )
+            # Proactive suggestion on prolonged idle
+            if idle_cycles >= PROACTIVE_THRESHOLD:
+                idle_cycles = 0
+                log.info("Idle threshold reached — generating proactive observation")
+                context = build_context()
+                pro_reply = proactive_observation(context, active_app)
+                if pro_reply:
+                    log.info(f"Proactive reply ({len(pro_reply)} chars): {pro_reply[:200]}...")
+                    try:
+                        notes_append(pro_reply)
+                        log.info("Proactive reply written to Notes")
+                    except Exception as e:
+                        log.error(f"Proactive append failed: {e}")
+                    if should_notify(pro_reply, ""):
+                        send_notification("Sompter", strip_html(pro_reply)[:200])
+                        log.info("Proactive notification sent")
+                    save_observation(active_app, "", "", "", pro_reply)
+            # Wait and continue
+            for _ in range(INTERVAL):
+                if not running:
+                    break
+                time.sleep(1)
+            continue
+
+        idle_cycles = 0
 
         # 4. Build memory context
         context = build_context()
         if context:
-            log.info(f"Memory context: {len(context)} chars from daily summaries + recent observations")
+            log.info(f"Memory context: {len(context)} chars")
 
         # 5. Call backend
         if not notes_msg and not screenshot_b64:
@@ -649,7 +750,17 @@ def main():
             else:
                 log.warning("No reply from backend")
 
-        # 5. Wait (check every second if we should stop)
+        # Write daemon status
+        _patterns_list = detect_patterns()
+        conn = sqlite3.connect(MEMORY_DB)
+        obs_count = conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0]
+        conn.close()
+        write_daemon_status(
+            cycle_count, "running", active_app, notes_msg,
+            obs_count, len(_patterns_list), _patterns_list,
+        )
+
+        # 6. Wait (check every second if we should stop)
         for _ in range(INTERVAL):
             if not running:
                 break

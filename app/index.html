@@ -266,7 +266,35 @@
           <span id="watch-status-text">Off</span>
           <button id="watch-toggle-btn" class="small-btn">Start</button>
         </div>
+        <div id="watch-daemon-status" class="hidden">
+          <div class="watch-section-title">Background Daemon</div>
+          <div class="watch-row">
+            <span class="watch-label">Status:</span>
+            <span class="watch-value" id="watch-daemon-status-text">—</span>
+          </div>
+          <div class="watch-row">
+            <span class="watch-label">PID:</span>
+            <span class="watch-value" id="watch-daemon-pid">—</span>
+          </div>
+          <div class="watch-row">
+            <span class="watch-label">Cycle:</span>
+            <span class="watch-value" id="watch-daemon-cycle">—</span>
+          </div>
+          <div class="watch-row">
+            <span class="watch-label">Observations:</span>
+            <span class="watch-value" id="watch-daemon-obs">—</span>
+          </div>
+          <div class="watch-row">
+            <span class="watch-label">Patterns:</span>
+            <span class="watch-value" id="watch-daemon-patterns">—</span>
+          </div>
+          <div class="watch-row">
+            <span class="watch-label">Last seen:</span>
+            <span class="watch-value" id="watch-daemon-last-obs">—</span>
+          </div>
+        </div>
         <div id="watch-info">
+          <div class="watch-section-title">Last Cycle</div>
           <div class="watch-row">
             <span class="watch-label">Screen:</span>
             <span class="watch-value" id="watch-screen-info">—</span>
@@ -1623,7 +1651,18 @@
       hideAllPanelsExcept('watch-panel');
       watchVisible = !watchVisible;
       watchPanel.classList.toggle('hidden', !watchVisible);
-      if (watchVisible) refreshWatchStatus();
+      if (watchVisible) {
+        refreshWatchStatus();
+        pollDaemonStatus();
+        if (!daemonStatusInterval) {
+          daemonStatusInterval = setInterval(pollDaemonStatus, 5000);
+        }
+      } else {
+        if (daemonStatusInterval) {
+          clearInterval(daemonStatusInterval);
+          daemonStatusInterval = null;
+        }
+      }
     });
 
     $('#gear-about').addEventListener('click', () => {
@@ -2728,6 +2767,10 @@
     $('#watch-close-btn').addEventListener('click', () => {
       watchPanel.classList.add('hidden');
       watchVisible = false;
+      if (daemonStatusInterval) {
+        clearInterval(daemonStatusInterval);
+        daemonStatusInterval = null;
+      }
     });
 
     window.electronAPI.onWatchChunk((data) => {
@@ -2743,6 +2786,40 @@
         watchSummary.classList.add('hidden');
       }
     });
+
+    // Daemon status polling
+    let daemonStatusInterval = null;
+
+    function updateDaemonStatus(status) {
+      const el = (id) => document.getElementById(id);
+      el('watch-daemon-status').classList.remove('hidden');
+      const statusText = el('watch-daemon-status-text');
+      if (status && status.status === 'running') {
+        statusText.textContent = 'Running';
+        statusText.style.color = '#22c55e';
+      } else if (status && status.status && status.status.includes('running')) {
+        statusText.textContent = status.status;
+        statusText.style.color = '#22c55e';
+      } else {
+        statusText.textContent = 'Stopped';
+        statusText.style.color = '#ef4444';
+      }
+      el('watch-daemon-pid').textContent = (status && status.pid) || '—';
+      el('watch-daemon-cycle').textContent = (status && status.cycle) || '—';
+      el('watch-daemon-obs').textContent = (status && status.observation_count) || '—';
+      el('watch-daemon-patterns').textContent = (status && status.pattern_count) || '—';
+      el('watch-daemon-last-obs').textContent = (status && status.last_observation_time)
+        ? new Date(status.last_observation_time).toLocaleTimeString() : '—';
+    }
+
+    async function pollDaemonStatus() {
+      try {
+        const status = await window.electronAPI.getDaemonStatus();
+        updateDaemonStatus(status);
+      } catch (e) {
+        console.error('Failed to poll daemon status:', e);
+      }
+    }
 
     // ---- About Panel ----
 

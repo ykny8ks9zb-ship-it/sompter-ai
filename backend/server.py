@@ -10,6 +10,7 @@ import tempfile
 import tarfile
 import uuid
 import datetime
+import time
 import requests
 import pyautogui
 pyautogui.FAILSAFE = False  # Safe: all actions require user confirmation
@@ -218,6 +219,26 @@ def ollama_available():
         return False
 
 
+_vision_models_cache: tuple[set[str], float] | None = None
+
+def model_supports_images(model: str | None = None) -> bool:
+    global _vision_models_cache
+    name = model or ollama_model
+    now = time.time()
+    if _vision_models_cache and now - _vision_models_cache[1] < 300:
+        return name in _vision_models_cache[0]
+    try:
+        resp = requests.get("http://localhost:11434/api/tags", timeout=5)
+        vision: set[str] = set()
+        for m in resp.json().get("models", []):
+            families = m.get("details", {}).get("families", [])
+            if any(f in ("clip", "gemma3") for f in families):
+                vision.add(m["name"])
+        _vision_models_cache = (vision, now)
+        return name in vision
+    except Exception:
+        return True  # assume vision on error
+
 def call_ollama(prompt: str, screenshot_b64: str | None, search_web: bool, system_override: str | None = None) -> str:
     if not ollama_available():
         raise Exception("Ollama is not running. Start it with: ollama serve")
@@ -235,7 +256,7 @@ def call_ollama(prompt: str, screenshot_b64: str | None, search_web: bool, syste
     if search_results:
         user_content = f"Web search results:\n{search_results}\n\nUser question: {prompt}"
     user_msg = {"role": "user", "content": user_content}
-    if screenshot_b64:
+    if screenshot_b64 and model_supports_images():
         img = screenshot_b64
         if img.startswith("data:image/"):
             img = img.split(",", 1)[-1]
@@ -1094,16 +1115,19 @@ class WatchAnalyzeRequest(BaseModel):
     notes_message: str = ""
     search_web: bool = False
     memory_context: str = ""
+    system_prompt: str = ""
 
 
 @app.post("/api/watch/analyze-screen")
 async def watch_analyze_screen(req: WatchAnalyzeRequest):
     try:
-        system_prompt = "You are a proactive Mac assistant watching the user's screen continuously. Be insightful and thorough."
-        if req.active_app:
-            system_prompt += f"\n\nActive application: {req.active_app}"
+        if req.system_prompt:
+            system_prompt = req.system_prompt
+        else:
+            system_prompt = "You are a proactive Mac assistant watching the user's screen continuously. Be insightful and thorough."
+            if req.active_app:
+                system_prompt += f"\n\nActive application: {req.active_app}"
 
-        # Build search context from user's notes message
         search_context = ""
         if req.search_web:
             query = req.notes_message if req.notes_message else "latest news, sports scores, current events"
@@ -1117,7 +1141,7 @@ async def watch_analyze_screen(req: WatchAnalyzeRequest):
 
         if req.memory_context:
             system_prompt += f"\n\n[RECENT CONTEXT FROM YOUR SESSIONS]\n{req.memory_context}"
-        if req.notes_message:
+        if req.notes_message and not req.system_prompt:
             system_prompt += f"\n\nThe user wrote in their notes: {req.notes_message}. Answer their question directly."
 
         has_web = bool(search_context and search_context != "No results found.")

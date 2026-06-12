@@ -94,6 +94,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   startWatchMode: () => ipcRenderer.invoke('startWatchMode'),
   stopWatchMode: () => ipcRenderer.invoke('stopWatchMode'),
   getWatchStatus: () => ipcRenderer.invoke('getWatchStatus'),
+  getDaemonStatus: () => ipcRenderer.invoke('getDaemonStatus'),
   notesSend: (text) => ipcRenderer.invoke('notesSend', text),
   notesRead: () => ipcRenderer.invoke('notesRead'),
   notesOpenNote: () => ipcRenderer.invoke('notesOpenNote'),

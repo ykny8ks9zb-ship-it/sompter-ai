@@ -1,6 +1,6 @@
 {
   "name": "sompter-ai",
-  "version": "0.2.0-watch-mode",
+  "version": "0.3.0-dev",
   "description": "Floating macOS sidebar AI assistant",
   "main": "app/main.js",
   "scripts": {
