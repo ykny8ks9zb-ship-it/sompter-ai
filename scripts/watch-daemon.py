@@ -621,8 +621,87 @@ def get_calendar_events() -> list[str]:
         return []
 
 
+def load_settings() -> dict:
+    """Load .sompter/settings.json"""
+    try:
+        p = os.path.join(PROJECT_DIR, ".sompter", "settings.json")
+        if os.path.exists(p):
+            with open(p) as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def detect_focus_state(active_app: str = "", browser_tabs: str = "") -> str:
+    """Detect user focus state: 'meeting', 'deep_work', 'idle', or 'normal'.
+    Uses active app name, browser tabs, calendar events, and settings config."""
+    try:
+        # Check screen saver / idle
+        try:
+            r = subprocess.run(["pmset", "-g", "assertions"], capture_output=True, text=True, timeout=5)
+            if "PreventUserIdleDisplaySleep" not in r.stdout and "PreventUserIdleSystemSleep" not in r.stdout:
+                r2 = subprocess.run(["iohide", "state"], capture_output=True, text=True, timeout=3)
+                if r2.returncode == 0 and "1" in r2.stdout.strip():
+                    return "idle"
+        except Exception:
+            pass
+
+        settings = load_settings()
+        focus_cfg = settings.get("focus_mode", {})
+        if not focus_cfg.get("enabled", True):
+            return "normal"
+
+        meeting_apps = [a.lower() for a in focus_cfg.get("meeting_apps", [
+            "zoom.us", "microsoft teams", "slack", "facetime", "google meet"
+        ])]
+        focus_apps = [a.lower() for a in focus_cfg.get("focus_apps", [
+            "code", "cursor", "windsurf", "xcode", "terminal", "iterm2", "obsidian"
+        ])]
+
+        app_lower = active_app.lower().strip()
+        browser_lower = browser_tabs.lower()
+
+        # Meeting check
+        for ma in meeting_apps:
+            if ma in app_lower or ma in browser_lower:
+                log.info(f"Focus: meeting detected ({ma})")
+                return "meeting"
+
+        # Check calendar for current events
+        try:
+            events = get_calendar_events()
+            if events:
+                now = datetime.now()
+                for ev in events:
+                    m = re.match(r'(\d{1,2}:\d{2}:\d{2}\s+[AP]M)', ev)
+                    if m:
+                        try:
+                            start = datetime.strptime(m.group(1), "%I:%M:%S %p").replace(
+                                year=now.year, month=now.month, day=now.day)
+                            # Assume 1-hour events
+                            if start <= now <= (start + timedelta(hours=1)):
+                                log.info(f"Focus: meeting from calendar ({ev})")
+                                return "meeting"
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+        # Deep work check
+        for fa in focus_apps:
+            if fa in app_lower:
+                log.info(f"Focus: deep work ({fa})")
+                return "deep_work"
+
+        return "normal"
+    except Exception as e:
+        log.warning(f"Focus detection failed: {e}")
+        return "normal"
+
+
 # ── Context injection (memory) ────────────────────────────────────────
-def build_context() -> str:
+def build_context(focus_state: str = "normal") -> str:
     try:
         conn = sqlite3.connect(MEMORY_DB)
         conn.row_factory = sqlite3.Row
@@ -645,6 +724,9 @@ def build_context() -> str:
         conn.close()
 
         parts = []
+
+        if focus_state != "normal":
+            parts.append(f"Focus state: {focus_state.upper()} — user is {'in a meeting' if focus_state == 'meeting' else 'deep in focused work' if focus_state == 'deep_work' else 'away from computer'}")
 
         sys_stats = get_system_stats()
         if sys_stats:
@@ -1295,7 +1377,7 @@ def proactive_observation(context: str, active_app: str, screenshot_b64: str = "
 def write_daemon_status(
     cycle: int, status: str, active_app: str = "", notes_msg: str = "",
     obs_count: int = 0, pattern_count: int = 0, patterns: list[str] | None = None,
-    last_obs_time: str = "",
+    last_obs_time: str = "", focus_state: str = "normal",
 ):
     data = {
         "pid": os.getpid(),
@@ -1311,6 +1393,7 @@ def write_daemon_status(
         "interval": INTERVAL,
         "last_heartbeat": datetime.now().isoformat(),
         "system": get_system_stats(),
+        "focus_state": focus_state,
     }
     try:
         os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
@@ -1420,6 +1503,11 @@ def main():
         notes_msg = notes_msgs[0] if notes_msgs else ""
         notes_messages_tuple = tuple(notes_msgs)
 
+        # ── Focus detection ────────────────────────────────────────
+        focus_state = detect_focus_state(active_app, browser_tabs if 'browser_tabs' in dir() else "")
+        if focus_state != "normal":
+            log.info(f"Focus state: {focus_state}")
+
         # ── Change detection ─────────────────────────────────────
         something_changed = (
             notes_messages_tuple != last_notes_messages
@@ -1439,37 +1527,53 @@ def main():
             write_daemon_status(
                 cycle_count, "running, no changes", active_app, "",
                 obs_count, len(_patterns_list), _patterns_list,
+                focus_state=focus_state,
             )
-            # Proactive web search on prolonged idle
+            # Proactive web search on prolonged idle (suppressed during focus)
             if idle_cycles >= PROACTIVE_THRESHOLD:
-                idle_cycles = 0
-                interest_check_cycles += 1
-                # Re-detect interests and discover teams every 10 proactive cycles
-                if interest_check_cycles >= 10:
-                    interest_check_cycles = 0
-                    fresh = detect_interests()
-                    if fresh:
-                        save_interests_to_settings(fresh)
-                        log.info(f"Re-detected interests: {fresh}")
-                    new_teams = auto_discover_teams()
-                    if new_teams:
-                        msg = f"Auto-discovered teams: {', '.join(new_teams)}"
-                        log.info(msg)
-                    ai_enhance_entities()
-                log.info("Idle threshold reached — generating proactive observation")
-                context = build_context()
-                pro_reply = proactive_observation(context, active_app, screenshot_b64)
-                if pro_reply:
-                    log.info(f"Proactive reply ({len(pro_reply)} chars): {pro_reply[:200]}...")
-                    try:
-                        notes_append(pro_reply)
-                        log.info("Proactive reply written to Notes")
-                    except Exception as e:
-                        log.error(f"Proactive append failed: {e}")
-                    if should_notify(pro_reply, "", proactive=True):
-                        send_notification("Sompter", strip_html(pro_reply)[:200], sound=True)
-                        log.info("Proactive notification sent")
-                    save_observation(active_app, "", "", "", pro_reply)
+                if focus_state in ("meeting", "deep_work"):
+                    log.info(f"Focus state is {focus_state}, suppressing proactive observation")
+                    # Still do periodic interest/entity checks in background
+                    interest_check_cycles += 1
+                    if interest_check_cycles >= 10:
+                        interest_check_cycles = 0
+                        fresh = detect_interests()
+                        if fresh:
+                            save_interests_to_settings(fresh)
+                        new_teams = auto_discover_teams()
+                        if new_teams:
+                            msg = f"Auto-discovered teams: {', '.join(new_teams)}"
+                            log.info(msg)
+                        ai_enhance_entities()
+                else:
+                    idle_cycles = 0
+                    interest_check_cycles += 1
+                    # Re-detect interests and discover teams every 10 proactive cycles
+                    if interest_check_cycles >= 10:
+                        interest_check_cycles = 0
+                        fresh = detect_interests()
+                        if fresh:
+                            save_interests_to_settings(fresh)
+                            log.info(f"Re-detected interests: {fresh}")
+                        new_teams = auto_discover_teams()
+                        if new_teams:
+                            msg = f"Auto-discovered teams: {', '.join(new_teams)}"
+                            log.info(msg)
+                        ai_enhance_entities()
+                    log.info("Idle threshold reached — generating proactive observation")
+                    context = build_context(focus_state=focus_state)
+                    pro_reply = proactive_observation(context, active_app, screenshot_b64)
+                    if pro_reply:
+                        log.info(f"Proactive reply ({len(pro_reply)} chars): {pro_reply[:200]}...")
+                        try:
+                            notes_append(pro_reply)
+                            log.info("Proactive reply written to Notes")
+                        except Exception as e:
+                            log.error(f"Proactive append failed: {e}")
+                        if should_notify(pro_reply, "", proactive=True):
+                            send_notification("Sompter", strip_html(pro_reply)[:200], sound=True)
+                            log.info("Proactive notification sent")
+                        save_observation(active_app, "", "", "", pro_reply)
             # Wait and continue
             for _ in range(INTERVAL):
                 if not running:
@@ -1478,9 +1582,10 @@ def main():
             continue
 
         idle_cycles = 0
+        interest_check_cycles = 0  # reset so entity checks don't run mid-session
 
         # 4. Build memory context
-        context = build_context()
+        context = build_context(focus_state=focus_state)
         if context:
             log.info(f"Memory context: {len(context)} chars")
 
@@ -1513,6 +1618,7 @@ def main():
         write_daemon_status(
             cycle_count, "running", active_app, notes_msg,
             obs_count, len(_patterns_list), _patterns_list,
+            focus_state=focus_state,
         )
 
         # 6. Wait (check every second if we should stop)

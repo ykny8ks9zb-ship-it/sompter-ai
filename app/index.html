@@ -302,6 +302,15 @@
             <span class="watch-label">System:</span>
             <span class="watch-value" id="watch-daemon-system" style="font-size:10px;color:#888">—</span>
           </div>
+          <div class="watch-row">
+            <span class="watch-label">Focus:</span>
+            <span class="watch-value" id="watch-daemon-focus">—</span>
+          </div>
+          <div class="watch-row" style="margin-top:6px">
+            <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer">
+              <input type="checkbox" id="watch-focus-toggle" checked> Focus Mode (auto-suppress proactive during meetings/deep work)
+            </label>
+          </div>
           <div style="display:flex;gap:4px;margin-top:6px">
             <button id="daemon-start-btn" class="small-btn" style="flex:1">Start</button>
             <button id="daemon-stop-btn" class="small-btn" style="flex:1">Stop</button>
@@ -3076,6 +3085,11 @@
       el('watch-daemon-last-obs').textContent = (status && status.last_observation_time)
         ? new Date(status.last_observation_time).toLocaleTimeString() : '—';
       el('watch-daemon-system').textContent = (status && status.system) || '—';
+      const focusEl = el('watch-daemon-focus');
+      const focusState = (status && status.focus_state) || 'normal';
+      const focusLabels = { meeting: 'Meeting 🎙', deep_work: 'Deep Work 🎯', idle: 'Idle 💤', normal: 'Normal' };
+      focusEl.textContent = focusLabels[focusState] || focusState;
+      focusEl.style.color = focusState === 'meeting' ? '#f59e0b' : focusState === 'deep_work' ? '#22c55e' : '#888';
     }
 
     async function pollDaemonStatus() {
@@ -3105,6 +3119,25 @@
       await window.electronAPI.restartDaemon();
       setTimeout(pollDaemonStatus, 3000);
       $('#daemon-restart-btn').textContent = 'Restart';
+    });
+
+    // Focus mode toggle
+    const focusToggle = $('#watch-focus-toggle');
+    async function loadFocusToggle() {
+      try {
+        const settings = await window.electronAPI.getSettings();
+        const focusCfg = settings.focus_mode || {};
+        focusToggle.checked = focusCfg.enabled !== false;
+      } catch (e) {}
+    }
+    loadFocusToggle();
+    focusToggle.addEventListener('change', async () => {
+      try {
+        const settings = await window.electronAPI.getSettings();
+        settings.focus_mode = settings.focus_mode || {};
+        settings.focus_mode.enabled = focusToggle.checked;
+        await window.electronAPI.saveSettings(settings);
+      } catch (e) { console.error('Failed to save focus setting', e); }
     });
 
     // ---- Tracked Teams ----
