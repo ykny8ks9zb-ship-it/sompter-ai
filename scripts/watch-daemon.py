@@ -434,6 +434,9 @@ def send_notification(title: str, body: str, sound: bool = False):
 def init_memory():
     db_dir = os.path.dirname(MEMORY_DB)
     os.makedirs(db_dir, exist_ok=True)
+    # Screenshots directory
+    ss_dir = os.path.join(db_dir, "screenshots")
+    os.makedirs(ss_dir, exist_ok=True)
     conn = sqlite3.connect(MEMORY_DB)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS observations (
@@ -478,6 +481,16 @@ def init_memory():
             FOREIGN KEY (entity1_id) REFERENCES entities(id),
             FOREIGN KEY (entity2_id) REFERENCES entities(id),
             UNIQUE(entity1_id, entity2_id, relationship_type)
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS screenshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            observation_id INTEGER,
+            filename TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            active_app TEXT,
+            FOREIGN KEY (observation_id) REFERENCES observations(id)
         )
     """)
     conn.commit()
@@ -783,6 +796,37 @@ def build_context(focus_state: str = "normal") -> str:
         return ""
 
 
+def save_screenshot_file(screenshot_b64: str, obs_id: int, active_app: str = "") -> str | None:
+    """Save screenshot base64 to disk, return filename or None."""
+    if not screenshot_b64:
+        return None
+    try:
+        ss_dir = os.path.join(os.path.dirname(MEMORY_DB), "screenshots")
+        os.makedirs(ss_dir, exist_ok=True)
+        # Strip data URI prefix if present
+        raw = screenshot_b64
+        if "," in raw:
+            raw = raw.split(",", 1)[1]
+        img_data = base64.b64decode(raw)
+        filename = f"obs_{obs_id}.jpg"
+        path = os.path.join(ss_dir, filename)
+        with open(path, "wb") as f:
+            f.write(img_data)
+        # Record in screenshots table
+        conn = sqlite3.connect(MEMORY_DB)
+        conn.execute(
+            "INSERT OR IGNORE INTO screenshots (observation_id, filename, timestamp, active_app) VALUES (?, ?, ?, ?)",
+            (obs_id, filename, datetime.now().isoformat(), active_app or ""),
+        )
+        conn.commit()
+        conn.close()
+        log.info(f"Screenshot saved: {filename} ({len(img_data)} bytes)")
+        return filename
+    except Exception as e:
+        log.warning(f"Failed to save screenshot: {e}")
+        return None
+
+
 def save_observation(
     active_app: str,
     notes_msg: str,
@@ -792,7 +836,7 @@ def save_observation(
 ):
     try:
         conn = sqlite3.connect(MEMORY_DB)
-        conn.execute(
+        cur = conn.execute(
             """INSERT INTO observations
                (timestamp, active_app, notes_message, screenshot_hash, search_results, ai_reply)
                VALUES (?, ?, ?, ?, ?, ?)""",
@@ -805,8 +849,12 @@ def save_observation(
                 ai_reply or "",
             ),
         )
+        obs_id = cur.lastrowid
         conn.commit()
         conn.close()
+        # Save screenshot file
+        if screenshot_b64:
+            save_screenshot_file(screenshot_b64, obs_id, active_app)
         update_entities_and_relationships(notes_msg, ai_reply, active_app)
     except Exception as e:
         log.error(f"Failed to save observation: {e}")

@@ -806,6 +806,50 @@ ipcMain.handle('saveSettings', async (_event, data) => {
   }
 });
 
+ipcMain.handle('listScreenshots', async () => {
+  const dbPath = path.join(__dirname, '..', '.sompter', 'memory.db');
+  const ssDir = path.join(__dirname, '..', '.sompter', 'screenshots');
+  try {
+    if (!fs.existsSync(dbPath)) return [];
+    const tmpScript = path.join(app.getPath('temp'), `sompter-ss-list-${Date.now()}.py`);
+    const pyScript = `import json, sqlite3, sys, os
+db = sys.argv[1]
+ss_dir = sys.argv[2]
+con = sqlite3.connect(db)
+con.row_factory = sqlite3.Row
+rows = con.execute("SELECT s.id, s.observation_id, s.filename, s.timestamp, s.active_app, o.notes_message FROM screenshots s LEFT JOIN observations o ON s.observation_id = o.id ORDER BY s.id DESC LIMIT 50").fetchall()
+con.close()
+result = []
+for r in rows:
+    d = dict(r)
+    fpath = os.path.join(ss_dir, d["filename"])
+    if os.path.exists(fpath):
+        d["file_exists"] = True
+    else:
+        d["file_exists"] = False
+    result.append(d)
+print(json.dumps(result))
+`;
+    fs.writeFileSync(tmpScript, pyScript, 'utf-8');
+    const r = execFileSync(path.join(__dirname, '..', '.venv', 'bin', 'python3'), [tmpScript, dbPath, ssDir], { timeout: 10000, maxBuffer: 1024 * 1024 });
+    try { fs.unlinkSync(tmpScript); } catch {}
+    return JSON.parse(r.toString().trim());
+  } catch (err) {
+    try { fs.unlinkSync(tmpScript); } catch {}
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('getScreenshot', async (_event, obsId) => {
+  const ssDir = path.join(__dirname, '..', '.sompter', 'screenshots');
+  try {
+    const files = fs.readdirSync(ssDir).filter(f => f.startsWith(`obs_${obsId}.`) || f === `obs_${obsId}.jpg`);
+    if (files.length === 0) return null;
+    const img = fs.readFileSync(path.join(ssDir, files[0]));
+    return img.toString('base64');
+  } catch { return null; }
+});
+
 ipcMain.handle('testProvider', async (_event, { provider }) => {
   try {
     const r = await fetch(`${BACKEND}/api/settings/test_provider`, {

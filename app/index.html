@@ -382,7 +382,13 @@
         <div id="memory-observations-list" style="max-height:150px;overflow-y:auto;font-size:11px"></div>
         <div class="memory-section-title">Daily Summaries</div>
         <div id="memory-summaries-list" style="max-height:120px;overflow-y:auto;font-size:11px"></div>
+        <div class="memory-section-title" style="cursor:pointer" id="memory-ss-toggle">📷 Screenshots <span id="mem-ss-count" style="color:#888;font-size:10px">(0)</span></div>
+        <div id="memory-ss-gallery" class="hidden" style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-bottom:8px;max-height:200px;overflow-y:auto"></div>
       </div>
+    </div>
+
+    <div id="ss-overlay" class="hidden" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);z-index:10000;display:flex;align-items:center;justify-content:center;cursor:pointer">
+      <img id="ss-overlay-img" style="max-width:90%;max-height:90%;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.5)">
     </div>
 
     <div id="notifications-panel" class="hidden">
@@ -1818,7 +1824,52 @@
           sl.appendChild(d);
         });
         if (!data.summaries || !data.summaries.length) sl.innerHTML = '<div style="color:#666">No summaries yet.</div>';
+
+        // Screenshots
+        loadScreenshotGallery();
       } catch (e) { console.error('Memory panel error:', e); }
+    }
+
+    async function loadScreenshotGallery() {
+      try {
+        const ssl = $('#memory-ss-gallery');
+        const ssCount = $('#mem-ss-count');
+        const list = await window.electronAPI.listScreenshots();
+        if (list && list.length) {
+          ssCount.textContent = `(${list.length})`;
+          ssl.innerHTML = '';
+          list.forEach(ss => {
+            const thumb = document.createElement('div');
+            thumb.style.cssText = 'position:relative;cursor:pointer;border-radius:4px;overflow:hidden;aspect-ratio:16/10;background:#1a1a2e';
+            const img = document.createElement('img');
+            img.dataset.obsId = ss.observation_id;
+            img.style.cssText = 'width:100%;height:100%;object-fit:cover;border:1px solid #3d3d5c;border-radius:4px';
+            img.alt = ss.timestamp || '';
+            // Load thumbnail via IPC
+            (async () => {
+              const b64 = await window.electronAPI.getScreenshot(ss.observation_id);
+              if (b64) img.src = `data:image/jpeg;base64,${b64}`;
+              else img.style.background = '#2a2a4e';
+            })();
+            img.addEventListener('click', async () => {
+              const overlay = $('#ss-overlay');
+              const overlayImg = $('#ss-overlay-img');
+              const b64 = await window.electronAPI.getScreenshot(ss.observation_id);
+              if (b64) overlayImg.src = `data:image/jpeg;base64,${b64}`;
+              overlay.classList.remove('hidden');
+            });
+            const label = document.createElement('div');
+            label.style.cssText = 'position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.6);color:#ccc;font-size:9px;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
+            label.textContent = ss.active_app || '';
+            thumb.appendChild(img);
+            thumb.appendChild(label);
+            ssl.appendChild(thumb);
+          });
+        } else {
+          ssCount.textContent = '(0)';
+          ssl.innerHTML = '<div style="color:#666;font-size:11px">No screenshots captured yet.</div>';
+        }
+      } catch (e) { console.error('Screenshot gallery error:', e); }
     }
 
     $('#gear-memory').addEventListener('click', () => {
@@ -1846,6 +1897,16 @@
         btn.textContent = '✗ Error';
       }
       setTimeout(() => { btn.innerHTML = '⬇ Export'; }, 2000);
+    });
+
+    // Screenshots toggle + overlay
+    $('#memory-ss-toggle').addEventListener('click', () => {
+      const gallery = $('#memory-ss-gallery');
+      gallery.classList.toggle('hidden');
+      if (!gallery.classList.contains('hidden')) loadScreenshotGallery();
+    });
+    $('#ss-overlay').addEventListener('click', () => {
+      $('#ss-overlay').classList.add('hidden');
     });
 
     // Memory Search
