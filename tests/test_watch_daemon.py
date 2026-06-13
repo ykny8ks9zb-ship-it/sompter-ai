@@ -80,6 +80,102 @@ class TestShouldNotify:
     def test_empty_reply_and_notes(self):
         assert should_notify("", "") is False
 
+    def test_proactive_does_not_trigger_for_score(self):
+        assert should_notify("the final score was 5-2", "", proactive=True) is False
+
+    def test_proactive_triggers_for_critical(self):
+        assert should_notify("storm warning issued", "", proactive=True) is True
+
+    def test_proactive_does_not_trigger_for_ordinary(self):
+        assert should_notify("dodgers won 5-2", "", proactive=True) is False
+
+    def test_proactive_user_question_still_triggers(self):
+        assert should_notify("some reply", "hello?", proactive=True) is True
+
+
+class TestDetectInterests:
+    def setup_method(self):
+        self._orig_db = watch_daemon.MEMORY_DB
+
+    def teardown_method(self):
+        watch_daemon.MEMORY_DB = self._orig_db
+
+    def test_empty_db_returns_empty(self):
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.execute("""
+                CREATE TABLE observations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    active_app TEXT,
+                    notes_message TEXT,
+                    ai_reply TEXT
+                )
+            """)
+            conn.commit()
+            conn.close()
+            watch_daemon.MEMORY_DB = db_path
+            interests = watch_daemon.detect_interests()
+            assert isinstance(interests, list)
+        finally:
+            os.unlink(db_path)
+
+    def test_detects_coding_interest(self):
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.execute("""
+                CREATE TABLE observations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    active_app TEXT,
+                    notes_message TEXT,
+                    ai_reply TEXT
+                )
+            """)
+            for i in range(5):
+                conn.execute(
+                    "INSERT INTO observations (timestamp, notes_message, ai_reply) VALUES (?, ?, ?)",
+                    (f"2026-06-1{i}:00:00", "how do I write python code?", "You can use Python for that task"),
+                )
+            conn.commit()
+            conn.close()
+            watch_daemon.MEMORY_DB = db_path
+            interests = watch_daemon.detect_interests()
+            assert "coding" in interests
+        finally:
+            os.unlink(db_path)
+
+    def test_detects_weather_interest(self):
+        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+            db_path = f.name
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.execute("""
+                CREATE TABLE observations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    active_app TEXT,
+                    notes_message TEXT,
+                    ai_reply TEXT
+                )
+            """)
+            for i in range(5):
+                conn.execute(
+                    "INSERT INTO observations (timestamp, notes_message, ai_reply) VALUES (?, ?, ?)",
+                    (f"2026-06-1{i}:00:00", "what is the weather?", "The temperature is 75°F"),
+                )
+            conn.commit()
+            conn.close()
+            watch_daemon.MEMORY_DB = db_path
+            interests = watch_daemon.detect_interests()
+            assert "weather" in interests
+        finally:
+            os.unlink(db_path)
+
 
 # ── System interaction tests ───────────────────────────────────────
 

@@ -375,12 +375,22 @@ IMPORTANT_KEYWORDS = [
     "your question", "you asked", "you wanted to know",
 ]
 
+# Only these trigger notifications for proactive (auto-generated) observations
+PROACTIVE_ALERT_KEYWORDS = [
+    "storm", "warning", "advisory", "hurricane", "tornado", "flood",
+    "earthquake", "wildfire", "evacuation", "shelter", "emergency",
+    "deadline", "urgent", "critical", "crash", "outage", "breach",
+]
 
-def should_notify(reply: str, notes_msg: str) -> bool:
+
+def should_notify(reply: str, notes_msg: str, proactive: bool = False) -> bool:
     if not NOTIFICATIONS_ENABLED:
         return False
     if notes_msg.strip():
         return True
+    if proactive:
+        lower = reply.lower()
+        return any(kw in lower for kw in PROACTIVE_ALERT_KEYWORDS)
     lower = reply.lower()
     return any(kw in lower for kw in IMPORTANT_KEYWORDS)
 
@@ -578,7 +588,8 @@ def get_tracked_teams() -> list[str]:
 
 
 def detect_interests() -> list[str]:
-    """Analyze recent observations to detect recurring topics of interest."""
+    """Analyze recent observations to detect recurring topics of interest.
+    Uses weighted scoring (user questions count more) and recency decay."""
     interests = []
     try:
         conn = sqlite3.connect(MEMORY_DB)
@@ -589,26 +600,35 @@ def detect_interests() -> list[str]:
 
         from collections import Counter
         topics = Counter()
+        now = time.time()
         interest_keywords = {
-            "weather": ["weather", "temperature", "forecast", "rain", "°f", "°c"],
-            "mlb": ["dodger", "mlb", "baseball", "world series", "playoff", "standings"],
-            "nfl": ["nfl", "football", "super bowl", "touchdown"],
-            "nba": ["nba", "basketball", "playoffs", "nba finals"],
-            "coding": ["python", "javascript", "code", "opencode", "app", "daemon", "backend"],
-            "news": ["news", "headline", "breaking", "election", "market"],
-            "stocks": ["stock", "market", "crypto", "bitcoin", "trading"],
+            "weather": ["weather", "temperature", "forecast", "rain", "°f", "°c", "humidity", "heat"],
+            "mlb": ["dodger", "mlb", "baseball", "world series", "playoff", "standings", "mets", "yankees"],
+            "nfl": ["nfl", "football", "super bowl", "touchdown", "nfc", "afc"],
+            "nba": ["nba", "basketball", "playoffs", "nba finals", "lakers", "celtics"],
+            "coding": ["python", "javascript", "typescript", "code", "opencode", "app", "daemon", "backend", "api", "npm", "git", "rust", "react"],
+            "news": ["news", "headline", "breaking", "election", "market", "report", "announce"],
+            "stocks": ["stock", "market", "crypto", "bitcoin", "trading", "invest", "s&p"],
+            "sports": ["score", "game", "win", "loss", "champion", "tournament", "match"],
+            "music": ["song", "album", "concert", "music", "spotify", "playlist"],
+            "movies": ["movie", "film", "netflix", "streaming", "watch", "show"],
         }
 
-        for msg, reply in rows:
+        for i, (msg, reply) in enumerate(rows):
             text = (msg + " " + reply).lower()
+            # User questions count 3x more than proactive observations
+            weight = 3 if msg.strip() else 1
+            # Recency decay: first row (newest) = full weight, last row = 0.5x
+            recency = 1.0 - (i / len(rows)) * 0.5
+            score = weight * recency
             for topic, keywords in interest_keywords.items():
                 for kw in keywords:
                     if kw in text:
-                        topics[topic] += 1
+                        topics[topic] += score
                         break
 
-        for topic, count in topics.most_common(3):
-            if count >= 3:
+        for topic, count in topics.most_common(5):
+            if count >= 2.0:
                 interests.append(topic)
     except Exception:
         pass
@@ -677,17 +697,38 @@ def proactive_observation(context: str, active_app: str) -> str | None:
     except Exception:
         pass
     prompt = (
-        "Generate a brief, interesting observation or suggestion based on "
-        "recent context and web search results. This is a proactive check "
-        "— the user hasn't asked anything specific. Surprise them with "
-        "something relevant: a news headline, sports score, weather update, "
-        "or helpful tip based on what they're working on. Keep it to 1-2 sentences."
+        "Generate one brief observation (1 sentence max) based on the web search results below. "
+        "Pick the most specific and concrete item from the search results: "
+        "a sports score, weather forecast, news headline, or tech story. "
+        "Format: 'Noticed: <specific detail from search results>.'. "
+        "Do NOT make up facts. Only use what is in the web search results."
     )
     system = (
-        "You are a proactive AI assistant. Based on the screen context and "
-        "web search results below, generate a helpful observation or suggestion."
+        "You are a proactive AI assistant. Your job is to find the single most "
+        "interesting specific fact from the web search results and report it."
         f"\n\nActive app: {active_app}"
     )
+    if interests:
+        system += f"\n\nThe user is interested in: {', '.join(interests)}. Prioritize these topics."
+    if teams:
+        system += f"\n\nThe user follows these sports teams: {', '.join(teams)}. Prioritize their scores, standings, and news."
+    if context:
+        system += f"\n\n[RECENT CONTEXT]\n{context}"
+    if search_results:
+        tag = ", ".join(teams) + " scores, news" if teams else "latest news, sports, events"
+        system += f"\n\n[WEB SEARCH RESULTS — {tag}]\n{search_results}"
+    else:
+        prompt = (
+            "Generate one brief observation about the user's current screen and "
+            "what they might be working on. Be specific about what you see on screen. "
+            "1 sentence max. Format: 'Noticed: <observation>.'. "
+            "Do not mention web search results if none are available."
+        )
+        system = (
+            "You are a proactive AI assistant. Examine the user's screen and "
+            "generate one specific observation about what they are doing."
+            f"\n\nActive app: {active_app}"
+        )
     if interests:
         system += f"\n\nThe user is interested in: {', '.join(interests)}. Prioritize these topics."
     if teams:
@@ -865,7 +906,7 @@ def main():
                         log.info("Proactive reply written to Notes")
                     except Exception as e:
                         log.error(f"Proactive append failed: {e}")
-                    if should_notify(pro_reply, ""):
+                    if should_notify(pro_reply, "", proactive=True):
                         send_notification("Sompter", strip_html(pro_reply)[:200])
                         log.info("Proactive notification sent")
                     save_observation(active_app, "", "", "", pro_reply)
