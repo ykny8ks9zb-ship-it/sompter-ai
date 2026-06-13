@@ -355,6 +355,11 @@
           <div class="memory-stat-box"><span class="memory-stat-num" id="mem-pattern-count">—</span><span class="memory-stat-label">Patterns</span></div>
           <div class="memory-stat-box"><span class="memory-stat-num" id="mem-interests-list">—</span><span class="memory-stat-label">Interests</span></div>
         </div>
+        <div style="margin-bottom:8px;display:flex;gap:4px">
+          <input type="text" id="mem-search-input" placeholder="Search memory..." style="flex:1;background:#1a1a2e;color:#e0e0f0;border:1px solid #3d3d5c;border-radius:6px;padding:6px 10px;font-size:12px;outline:none">
+          <button id="mem-search-btn" class="small-btn">Search</button>
+        </div>
+        <div id="memory-search-results" class="hidden" style="margin-bottom:8px;max-height:150px;overflow-y:auto;font-size:11px"></div>
         <div class="memory-section-title">Detected Patterns</div>
         <div id="memory-patterns-list" style="margin-bottom:8px;font-size:11px;color:#a0a0c0"></div>
         <div class="memory-section-title">Entities</div>
@@ -1814,6 +1819,47 @@
     $('#memory-close-btn').addEventListener('click', () => {
       memoryVisible = false;
       memoryPanel.classList.add('hidden');
+    });
+
+    // Memory Search
+    async function doMemorySearch() {
+      const q = document.getElementById('mem-search-input').value.trim();
+      const resultsEl = document.getElementById('memory-search-results');
+      if (!q) { resultsEl.classList.add('hidden'); return; }
+      resultsEl.classList.remove('hidden');
+      resultsEl.innerHTML = '<div style="color:#8888aa">Searching...</div>';
+      try {
+        const results = await window.electronAPI.searchMemory(q);
+        let html = `<div style="color:#8888aa;margin-bottom:4px">Results for "${q}":</div>`;
+        if (results.observations && results.observations.length) {
+          html += '<div style="color:#a78bfa;font-size:10px;margin-top:4px">Observations:</div>';
+          results.observations.forEach(o => {
+            html += `<div style="padding:3px 6px;margin:2px 0;background:#2a2a4e;border-radius:4px">${o.timestamp ? o.timestamp.slice(11,19) : ''} [${o.active_app || '?'}] ${o.msg || ''} ${o.reply || ''}</div>`;
+          });
+        }
+        if (results.entities && results.entities.length) {
+          html += '<div style="color:#a78bfa;font-size:10px;margin-top:4px">Entities:</div>';
+          results.entities.forEach(e => {
+            html += `<div style="padding:3px 6px;margin:2px 0;background:#2a2a4e;border-radius:4px">${e.name} (${e.type}, ${e.mentions}x)</div>`;
+          });
+        }
+        if (results.summaries && results.summaries.length) {
+          html += '<div style="color:#a78bfa;font-size:10px;margin-top:4px">Summaries:</div>';
+          results.summaries.forEach(s => {
+            html += `<div style="padding:3px 6px;margin:2px 0;background:#2a2a4e;border-radius:4px">${s.date}: ${s.summary}</div>`;
+          });
+        }
+        if (!results.observations && !results.entities && !results.summaries) {
+          html += '<div style="color:#666">No results found.</div>';
+        }
+        resultsEl.innerHTML = html;
+      } catch (e) {
+        resultsEl.innerHTML = '<div style="color:#ef4444">Search failed.</div>';
+      }
+    }
+    document.getElementById('mem-search-btn').addEventListener('click', doMemorySearch);
+    document.getElementById('mem-search-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') doMemorySearch();
     });
 
     $('#gear-about').addEventListener('click', () => {

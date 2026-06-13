@@ -1213,6 +1213,35 @@ print(json.dumps({"observations":o,"summaries":s,"stats":st,"entities":e,"relati
   }
 });
 
+ipcMain.handle('searchMemory', async (_event, query) => {
+  const memDir = path.join(__dirname, '..', '.sompter');
+  const dbPath = path.join(memDir, 'memory.db');
+  if (!query || !query.trim()) return { observations: [], entities: [], summaries: [] };
+  const q = query.trim().replace(/'/g, "''");
+  const tmpScript = path.join(app.getPath('temp'), `sompter-search-${Date.now()}.py`);
+  const pyScript = `import json,sqlite3,sys
+db = sys.argv[1]
+q = sys.argv[2]
+con = sqlite3.connect(db)
+con.row_factory = sqlite3.Row
+o = [dict(r) for r in con.execute("SELECT timestamp,active_app,substr(notes_message,1,120)as msg,substr(ai_reply,1,150)as reply FROM observations WHERE notes_message LIKE ? OR ai_reply LIKE ? ORDER BY id DESC LIMIT 20", (f"%{q}%", f"%{q}%"))]
+e = [dict(r) for r in con.execute("SELECT name,type,mentions FROM entities WHERE name LIKE ? ORDER BY mentions DESC LIMIT 10", (f"%{q}%",))]
+s = [dict(r) for r in con.execute("SELECT date,substr(summary,1,200)as summary FROM daily_summaries WHERE summary LIKE ? ORDER BY date DESC LIMIT 5", (f"%{q}%",))]
+con.close()
+print(json.dumps({"observations":o,"entities":e,"summaries":s}))
+`;
+  try {
+    fs.writeFileSync(tmpScript, pyScript, 'utf-8');
+    const r = execFileSync(path.join(__dirname, '..', '.venv', 'bin', 'python3'), [tmpScript, dbPath, q], { timeout: 5000, maxBuffer: 1024 * 1024 });
+    const result = JSON.parse(r.toString().trim());
+    try { fs.unlinkSync(tmpScript); } catch {}
+    return result;
+  } catch (err) {
+    try { fs.unlinkSync(tmpScript); } catch {}
+    return { observations: [], entities: [], summaries: [] };
+  }
+});
+
 // ---- Notification Preferences IPC ----
 
 function getSettingsJson() {
