@@ -298,6 +298,10 @@
             <span class="watch-label">Last seen:</span>
             <span class="watch-value" id="watch-daemon-last-obs">—</span>
           </div>
+          <div class="watch-row">
+            <span class="watch-label">System:</span>
+            <span class="watch-value" id="watch-daemon-system" style="font-size:10px;color:#888">—</span>
+          </div>
           <div style="display:flex;gap:4px;margin-top:6px">
             <button id="daemon-start-btn" class="small-btn" style="flex:1">Start</button>
             <button id="daemon-stop-btn" class="small-btn" style="flex:1">Stop</button>
@@ -3007,6 +3011,7 @@
       el('watch-daemon-patterns').textContent = (status && status.pattern_count) || '—';
       el('watch-daemon-last-obs').textContent = (status && status.last_observation_time)
         ? new Date(status.last_observation_time).toLocaleTimeString() : '—';
+      el('watch-daemon-system').textContent = (status && status.system) || '—';
     }
 
     async function pollDaemonStatus() {

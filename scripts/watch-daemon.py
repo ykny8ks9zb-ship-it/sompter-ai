@@ -418,10 +418,12 @@ def should_notify(reply: str, notes_msg: str, proactive: bool = False) -> bool:
     return has_keyword
 
 
-def send_notification(title: str, body: str):
+def send_notification(title: str, body: str, sound: bool = False):
     safe_title = title.replace('"', '\\"').replace("'", "'\\''")
     safe_body = body.replace('"', '\\"').replace("'", "'\\''")[:200]
     script = f'display notification "{safe_body}" with title "{safe_title}"'
+    if sound:
+        script += ' sound name "default"'
     try:
         subprocess.run(["osascript", "-e", script], capture_output=True, timeout=5)
     except Exception as e:
@@ -531,6 +533,94 @@ def detect_patterns() -> list[str]:
         return []
 
 
+# ── System Stats ───────────────────────────────────────────────────────
+def get_system_stats() -> str:
+    try:
+        import subprocess
+        parts = []
+        # CPU load (1 min average)
+        try:
+            r = subprocess.run(["ps", "-A", "-o", "%cpu"], capture_output=True, text=True, timeout=5)
+            lines = r.stdout.strip().split("\n")[1:]
+            cpus = [float(l.strip()) for l in lines if l.strip()]
+            if cpus:
+                avg = sum(cpus) / len(cpus)
+                parts.append(f"CPU: {avg:.1f}%")
+        except Exception:
+            pass
+        # Memory
+        try:
+            r = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=5)
+            for line in r.stdout.split("\n"):
+                if "page size of" in line:
+                    page_size = int(line.split()[-2])
+                if "Pages free" in line:
+                    free_pages = int(line.split()[-1].rstrip("."))
+            total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+            free = page_size * free_pages if 'page_size' in dir() else 0
+            used_pct = (1 - free / total) * 100 if total else 0
+            parts.append(f"Memory: {used_pct:.0f}%")
+        except Exception:
+            pass
+        # Disk
+        try:
+            r = subprocess.run(["df", "-h", "/"], capture_output=True, text=True, timeout=5)
+            line = r.stdout.strip().split("\n")[1]
+            cols = line.split()
+            if len(cols) >= 5:
+                parts.append(f"Disk: {cols[4]}")
+        except Exception:
+            pass
+        # Battery
+        try:
+            r = subprocess.run(["pmset", "-g", "batt"], capture_output=True, text=True, timeout=5)
+            for line in r.stdout.split("\n"):
+                if "InternalBattery" in line:
+                    m = re.search(r'(\d+)%', line)
+                    if m:
+                        parts.append(f"Battery: {m.group(1)}%")
+                    if "charging" in line.lower() or "charged" in line.lower():
+                        parts.append("(plugged in)")
+                    break
+        except Exception:
+            pass
+        return " | ".join(parts) if parts else ""
+    except Exception:
+        return ""
+
+
+# ── Calendar Events ────────────────────────────────────────────────────
+def get_calendar_events() -> list[str]:
+    script = """
+    tell application "Calendar"
+        set output to ""
+        set todayStart to (current date)
+        set hours of todayStart to 0
+        set minutes of todayStart to 0
+        set seconds of todayStart to 0
+        set todayEnd to todayStart + 86400
+        repeat with c in calendars
+            try
+                set evts to events of c whose start date is greater than todayStart and start date is less than todayEnd
+                repeat with e in evts
+                    set startStr to (start date of e as string)
+                    set summaryStr to summary of e
+                    set output to output & startStr & " | " & summaryStr & linefeed
+                end repeat
+            end try
+        end repeat
+        return output
+    end tell
+    """
+    try:
+        r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=10)
+        lines = [l.strip() for l in r.stdout.strip().split("\n") if l.strip()]
+        return lines[:5]
+    except Exception as e:
+        log.warning(f"Calendar read failed: {e}")
+        return []
+
+
 # ── Context injection (memory) ────────────────────────────────────────
 def build_context() -> str:
     try:
@@ -555,6 +645,16 @@ def build_context() -> str:
         conn.close()
 
         parts = []
+
+        sys_stats = get_system_stats()
+        if sys_stats:
+            parts.append(f"System: {sys_stats}")
+
+        cal_events = get_calendar_events()
+        if cal_events:
+            parts.append("Today's Calendar:")
+            for ev in cal_events:
+                parts.append(f"  - {ev}")
 
         if summaries:
             parts.append("Recent Daily Summaries:")
@@ -1210,6 +1310,7 @@ def write_daemon_status(
         "memory_db": MEMORY_DB,
         "interval": INTERVAL,
         "last_heartbeat": datetime.now().isoformat(),
+        "system": get_system_stats(),
     }
     try:
         os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
@@ -1366,7 +1467,7 @@ def main():
                     except Exception as e:
                         log.error(f"Proactive append failed: {e}")
                     if should_notify(pro_reply, "", proactive=True):
-                        send_notification("Sompter", strip_html(pro_reply)[:200])
+                        send_notification("Sompter", strip_html(pro_reply)[:200], sound=True)
                         log.info("Proactive notification sent")
                     save_observation(active_app, "", "", "", pro_reply)
             # Wait and continue
@@ -1398,7 +1499,7 @@ def main():
                 except Exception as e:
                     log.error(f"Notes append failed: {e}")
                 if should_notify(reply, notes_msg):
-                    send_notification("Sompter", strip_html(reply)[:200])
+                    send_notification("Sompter", strip_html(reply)[:200], sound=bool(notes_msg.strip()))
                     log.info("Notification sent")
                 save_observation(active_app, notes_msg, screenshot_b64, "", reply)
             else:
