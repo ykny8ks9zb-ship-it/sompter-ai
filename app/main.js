@@ -499,13 +499,14 @@ ipcMain.handle('ask', async (_event, { prompt }) => {
   }
 });
 
-ipcMain.handle('startAskStream', async (_event, { prompt }) => {
+ipcMain.handle('startAskStream', async (_event, { prompt, templateText }) => {
   try {
+    const finalPrompt = templateText ? `[Instructions]\n${templateText}\n\n[User Message]\n${prompt}` : prompt;
     const base64 = await takeScreenshot();
     const response = await fetch(`${BACKEND}/api/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, screenshot: base64 }),
+      body: JSON.stringify({ prompt: finalPrompt, screenshot: base64 }),
     });
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -1338,6 +1339,29 @@ function saveSettingsJson(data) {
   Object.assign(existing, data);
   fs.writeFileSync(settingsPath, JSON.stringify(existing, null, 2));
 }
+
+ipcMain.handle('getPromptTemplates', async () => {
+  const s = getSettingsJson();
+  return s.prompt_templates || [];
+});
+
+ipcMain.handle('savePromptTemplate', async (_event, template) => {
+  const s = getSettingsJson();
+  const templates = s.prompt_templates || [];
+  const idx = templates.findIndex(t => t.id === template.id);
+  if (idx >= 0) templates[idx] = template;
+  else templates.push(template);
+  s.prompt_templates = templates;
+  saveSettingsJson(s);
+  return { success: true };
+});
+
+ipcMain.handle('deletePromptTemplate', async (_event, templateId) => {
+  const s = getSettingsJson();
+  s.prompt_templates = (s.prompt_templates || []).filter(t => t.id !== templateId);
+  saveSettingsJson(s);
+  return { success: true };
+});
 
 ipcMain.handle('getNotifPrefs', async () => {
   const s = getSettingsJson();

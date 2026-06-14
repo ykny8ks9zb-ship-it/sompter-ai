@@ -723,8 +723,36 @@
     </div>
 
     <div id="input-area">
+      <div id="template-row" style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
+        <select id="template-select" style="flex:1;background:#1a1a2e;color:#e0e0f0;border:1px solid #3d3d5c;border-radius:6px;padding:3px 6px;font-size:11px;outline:none">
+          <option value="">No template</option>
+        </select>
+        <button id="template-manage-btn" class="small-btn" style="font-size:10px;padding:2px 6px" title="Manage templates">⚙</button>
+      </div>
       <input type="text" id="chat-input" placeholder="Ask anything..." />
       <button id="send-btn">Send</button>
+    </div>
+
+    <div id="templates-panel" class="hidden" style="border-top:1px solid #3d3d5c;padding:8px 12px;font-size:12px;background:#1a1a2e">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="color:#a78bfa;font-weight:600">📋 Prompt Templates</span>
+        <button id="template-add-btn" class="small-btn" style="font-size:10px;padding:2px 6px">+ Add</button>
+      </div>
+      <div id="templates-list" style="max-height:150px;overflow-y:auto;margin-bottom:6px"></div>
+      <div id="template-editor" class="hidden" style="border:1px solid #3d3d5c;border-radius:6px;padding:8px;margin-bottom:6px;background:#151530">
+        <div style="margin-bottom:4px">
+          <input type="text" id="template-edit-name" placeholder="Template name..." style="width:100%;background:#1a1a2e;color:#e0e0f0;border:1px solid #3d3d5c;border-radius:4px;padding:4px 6px;font-size:11px;outline:none;box-sizing:border-box">
+        </div>
+        <div style="margin-bottom:4px">
+          <textarea id="template-edit-text" placeholder="Template instructions..." rows="3" style="width:100%;background:#1a1a2e;color:#e0e0f0;border:1px solid #3d3d5c;border-radius:4px;padding:4px 6px;font-size:11px;outline:none;resize:vertical;box-sizing:border-box"></textarea>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button id="template-save-btn" class="small-btn" style="font-size:10px;padding:2px 8px">Save</button>
+          <button id="template-cancel-btn" class="small-btn" style="font-size:10px;padding:2px 8px">Cancel</button>
+          <button id="template-delete-btn" class="small-btn delete-btn" style="font-size:10px;padding:2px 8px;display:none">Delete</button>
+        </div>
+      </div>
+      <div id="template-msg" style="font-size:10px;color:#888"></div>
     </div>
 
     <div id="status-footer">
@@ -2507,7 +2535,9 @@
       showSkeleton();
 
       try {
-        window.electronAPI.startAskStream(prompt);
+        const templateSelect = $('#template-select');
+        const templateText = templateSelect && templateSelect.value ? templateSelect.value : '';
+        window.electronAPI.startAskStream({ prompt, templateText });
       } catch (err) {
         isStreaming = false;
         _sending = false;
@@ -3701,6 +3731,99 @@
         showOnboarding(1);
       }
     }, 500);
+
+    // ── Prompt Templates ───────────────────────────────────────────
+    let templateEditingId = null;
+    const templatesPanel = $('#templates-panel');
+
+    async function loadTemplates() {
+      try {
+        const templates = await window.electronAPI.getPromptTemplates();
+        const select = $('#template-select');
+        const list = $('#templates-list');
+        // Keep the "No template" option
+        select.innerHTML = '<option value="">No template</option>';
+        list.innerHTML = '';
+        (templates || []).forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t.text || '';
+          opt.textContent = t.name || 'Unnamed';
+          select.appendChild(opt);
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:3px 4px;border-radius:4px;margin-bottom:2px';
+          row.innerHTML = `<span style="color:#e0e0f0;font-size:11px">${t.name || 'Unnamed'}</span>`;
+          const editBtn = document.createElement('button');
+          editBtn.className = 'small-btn';
+          editBtn.style.cssText = 'font-size:9px;padding:1px 4px';
+          editBtn.textContent = '✎';
+          editBtn.addEventListener('click', () => editTemplate(t.id));
+          row.appendChild(editBtn);
+          list.appendChild(row);
+        });
+      } catch (e) { console.error('Failed to load templates:', e); }
+    }
+
+    async function editTemplate(id) {
+      templateEditingId = id;
+      const templates = await window.electronAPI.getPromptTemplates();
+      const t = templates.find(x => x.id === id) || { name: '', text: '' };
+      $('#template-edit-name').value = t.name || '';
+      $('#template-edit-text').value = t.text || '';
+      $('#template-editor').classList.remove('hidden');
+      $('#template-delete-btn').style.display = id ? '' : 'none';
+      $('#template-msg').textContent = '';
+    }
+
+    $('#template-manage-btn').addEventListener('click', () => {
+      templatesPanel.classList.toggle('hidden');
+      if (!templatesPanel.classList.contains('hidden')) {
+        loadTemplates();
+        $('#template-editor').classList.add('hidden');
+        $('#template-msg').textContent = '';
+      }
+    });
+
+    $('#template-add-btn').addEventListener('click', () => {
+      templateEditingId = null;
+      $('#template-edit-name').value = '';
+      $('#template-edit-text').value = '';
+      $('#template-editor').classList.remove('hidden');
+      $('#template-delete-btn').style.display = 'none';
+      $('#template-msg').textContent = '';
+      $('#template-edit-name').focus();
+    });
+
+    $('#template-save-btn').addEventListener('click', async () => {
+      const name = $('#template-edit-name').value.trim();
+      const text = $('#template-edit-text').value.trim();
+      if (!name || !text) {
+        $('#template-msg').textContent = 'Name and text required';
+        return;
+      }
+      const template = { id: templateEditingId || Date.now().toString(), name, text };
+      await window.electronAPI.savePromptTemplate(template);
+      $('#template-editor').classList.add('hidden');
+      $('#template-msg').textContent = 'Saved ✓';
+      loadTemplates();
+    });
+
+    $('#template-cancel-btn').addEventListener('click', () => {
+      $('#template-editor').classList.add('hidden');
+      $('#template-msg').textContent = '';
+    });
+
+    $('#template-delete-btn').addEventListener('click', async () => {
+      if (templateEditingId) {
+        await window.electronAPI.deletePromptTemplate(templateEditingId);
+        $('#template-editor').classList.add('hidden');
+        $('#template-msg').textContent = 'Deleted ✓';
+        templateEditingId = null;
+        loadTemplates();
+      }
+    });
+
+    // Load templates on startup
+    loadTemplates();
   </script>
 </body>
 </html>
