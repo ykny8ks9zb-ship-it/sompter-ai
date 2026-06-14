@@ -602,7 +602,24 @@ def get_system_stats() -> str:
         return ""
 
 
-# ── Calendar Events ────────────────────────────────────────────────────
+FAKE_TYPING_KEYWORDS = {"password", "secret", "token", "api_key", "auth", "credential", "login", "passwd"}
+
+
+def get_clipboard_content() -> str:
+    """Read macOS clipboard via pbpaste. Skips credential-like content."""
+    try:
+        r = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=3)
+        if r.returncode == 0:
+            text = r.stdout.strip()
+            if any(kw in text.lower() for kw in FAKE_TYPING_KEYWORDS):
+                return ""
+            return text
+    except Exception:
+        pass
+    return ""
+
+
+# ── Calendar Events ──────────────────────────────────────────────────────────────────────
 def get_calendar_events() -> list[str]:
     script = """
     tell application "Calendar"
@@ -1491,6 +1508,8 @@ def main():
     # State tracking for change detection
     last_notes_messages: tuple[str, ...] = ()
     last_active_app = ""
+    last_clipboard = ""
+    clipboard_monitor_enabled = False
     idle_cycles = 0
     interest_check_cycles = 0
     last_cycle_ts = time.time()
@@ -1539,7 +1558,21 @@ def main():
         except Exception as e:
             log.error(f"Active app failed: {e}")
 
-        # 3. Read notes
+        # 3. Clipboard monitoring
+        clipboard_text = ""
+        try:
+            settings = load_settings()
+            cb_cfg = settings.get("clipboard_monitor", {})
+            if cb_cfg.get("enabled", False):
+                clipboard_text = get_clipboard_content()
+                if clipboard_text and clipboard_text != last_clipboard and len(clipboard_text) > 10:
+                    log.info(f"Clipboard changed: {clipboard_text[:100]}...")
+                    save_observation("📋 Clipboard", "", "", clipboard_text[:500], "")
+                    last_clipboard = clipboard_text
+        except Exception as e:
+            log.warning(f"Clipboard check failed: {e}")
+
+        # 4. Read notes
         notes_msgs: list[str] = []
         try:
             notes_msgs = notes_read_latest()
@@ -1632,12 +1665,12 @@ def main():
         idle_cycles = 0
         interest_check_cycles = 0  # reset so entity checks don't run mid-session
 
-        # 4. Build memory context
+        # 5. Build memory context
         context = build_context(focus_state=focus_state)
         if context:
             log.info(f"Memory context: {len(context)} chars")
 
-        # 5. Call backend
+        # 6. Call backend
         if not notes_msg and not screenshot_b64:
             log.info("Nothing to analyze, skipping cycle")
         else:
@@ -1669,7 +1702,7 @@ def main():
             focus_state=focus_state,
         )
 
-        # 6. Wait (check every second if we should stop)
+        # 7. Wait (check every second if we should stop)
         for _ in range(INTERVAL):
             if not running:
                 break

@@ -311,6 +311,11 @@
               <input type="checkbox" id="watch-focus-toggle" checked> Focus Mode (auto-suppress proactive during meetings/deep work)
             </label>
           </div>
+          <div class="watch-row">
+            <label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer">
+              <input type="checkbox" id="watch-clipboard-toggle"> Clipboard Monitor (save copied text as observations)
+            </label>
+          </div>
           <div style="display:flex;gap:4px;margin-top:6px">
             <button id="daemon-start-btn" class="small-btn" style="flex:1">Start</button>
             <button id="daemon-stop-btn" class="small-btn" style="flex:1">Stop</button>
@@ -3229,6 +3234,25 @@
         settings.focus_mode.enabled = focusToggle.checked;
         await window.electronAPI.saveSettings(settings);
       } catch (e) { console.error('Failed to save focus setting', e); }
+    });
+
+    // Clipboard monitor toggle
+    const clipboardToggle = $('#watch-clipboard-toggle');
+    async function loadClipboardToggle() {
+      try {
+        const settings = await window.electronAPI.getSettings();
+        const cbCfg = settings.clipboard_monitor || {};
+        clipboardToggle.checked = cbCfg.enabled === true;
+      } catch (e) {}
+    }
+    loadClipboardToggle();
+    clipboardToggle.addEventListener('change', async () => {
+      try {
+        const settings = await window.electronAPI.getSettings();
+        settings.clipboard_monitor = settings.clipboard_monitor || {};
+        settings.clipboard_monitor.enabled = clipboardToggle.checked;
+        await window.electronAPI.saveSettings(settings);
+      } catch (e) { console.error('Failed to save clipboard setting', e); }
     });
 
     // ---- Tracked Teams ----
